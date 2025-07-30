@@ -1,0 +1,10 @@
+node_modules
+.env
+.DS_Store
+.env.local
+C:
+downloadimage.js
+.vscode
+.idea
+C
+logs/

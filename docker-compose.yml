@@ -1,0 +1,78 @@
+version: "3"
+name: remarkably-backend
+
+services:
+  nginx:
+    image: nginx:1.23.1-alpine
+    container_name: nginx
+    env_file: .env
+    environment:
+      - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
+    ports:
+      - 80:80
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/templates/nginx.conf.template
+    working_dir: /usr/share/nginx/html
+    depends_on:
+      - backend-server
+    networks:
+      - remarkably-net
+    restart: always
+
+  backend-server:
+    build: .
+    container_name: backend-server
+    env_file: .env
+    environment:
+      - REDIS_PORT=6379
+      - REDIS_HOST=redis
+      - EXECUTABLE_PATH_CHROME=/usr/bin/google-chrome
+      - MONGODB_DB=mongodb://remarkably:12345678@mongodb:27017/admin
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - remarkably-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+    restart: unless-stopped
+
+  redis:
+    image: redis:6.2-alpine
+    container_name: redis
+    networks:
+      - remarkably-net
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mongodb:
+    image: mongo:8.0.9
+    container_name: mongodb
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb_data:/data/db/
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: remarkably
+      MONGO_INITDB_ROOT_PASSWORD: 12345678
+    networks:
+      - remarkably-net
+    restart: always
+
+networks:
+  remarkably-net:
+    driver: bridge
+
+volumes:
+  redis_data:
+  mongodb_data:
