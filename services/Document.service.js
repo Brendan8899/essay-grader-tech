@@ -294,71 +294,6 @@ async function createDocumentWithVerification(userId, data, filename, filePath, 
   };
 }
 
-// Add function to update student name after teacher review
-async function updateStudentNameAfterReview(documentId, studentName, userId) {
-  try {
-    // Ensure the document belongs to this teacher
-    const document = await InputPdf.findOne({
-      _id: documentId,
-      userId,
-    });
-
-    if (!document) {
-      return {
-        success: false,
-        message: "Document not found or you don't have permission to update it",
-      };
-    }
-
-    // Check if student exists in the database for this class
-    const { Student } = require("../mongoDB_schema");
-    const existingStudent = await Student.findOne({
-      userId,
-      className: document.className,
-      studentName: { $regex: new RegExp(`^${studentName}$`, "i") },
-    });
-
-    // If student doesn't exist, add them to the database
-    if (
-      !existingStudent &&
-      studentName.trim() !== "No Name" &&
-      studentName.trim() !== "No Name Found In Database"
-    ) {
-      try {
-        await Student.create({
-          userId,
-          className: document.className,
-          studentName: studentName.trim(),
-        });
-        console.info(`Added new student "${studentName}" to class "${document.className}"`);
-      } catch (addError) {
-        console.error("Error adding student to database:", addError);
-        // Continue with document update even if student addition fails
-      }
-    }
-
-    // Update the document with the verified name
-    const updatedDoc = await InputPdf.findByIdAndUpdate(
-      documentId,
-      {
-        studentName,
-        nameVerified: true,
-        requiresTeacherReview: false,
-      },
-      { new: true }
-    );
-
-    return {
-      success: true,
-      message: "Student name updated successfully",
-      document: updatedDoc,
-    };
-  } catch (error) {
-    console.error("Error updating student name:", error);
-    throw error;
-  }
-}
-
 async function updateAnnotations(documentId, type, index, updatedFeedback) {
   const document = await InputPdf.findOne({
     _id: documentId,
@@ -382,7 +317,6 @@ module.exports = {
   updateAIResponseToDocument,
   updateDuplicatedDocument,
   createDocumentWithVerification,
-  updateStudentNameAfterReview,
   updateAnnotations,
   organizeAnnotations
 };

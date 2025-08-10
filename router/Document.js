@@ -4,7 +4,6 @@ const path = require("path");
 const { Storage } = require("@google-cloud/storage");
 const {
   searchConditionConstructor,
-  updateStudentNameAfterReview,
   updateAnnotations,
 } = require("../services/Document.service");
 const multer = require("multer");
@@ -131,7 +130,6 @@ documentRouter.post("/graded/:id", upload.single("file"), async (req, res) => {
     }
   );
 
-  // Delete Local folder in background
   deleteFilePath(file.path);
 
   // Construct file URLs for response
@@ -197,22 +195,6 @@ documentRouter.patch("/update", async (req, res) => {
   );
 
   return res.status(200).json({ msg: "Document updated successfully", body: updatedDocument });
-});
-
-documentRouter.post("/setFeedbackAsModel/:id", async (req, res) => {
-  const { isModel } = req.body;
-  const updatedDocument = await InputPdf.findByIdAndUpdate(req.params.id, { isModel });
-  return res.status(200).json({ msg: "Successfully set feedback as model", body: updatedDocument });
-});
-
-/**
- * Get all classes under a teacher.
- */
-documentRouter.get("/class-list", async (req, res) => {
-  const uid = req.user.uid;
-  const docs = await InputPdf.find({ userId: uid });
-  const classes = new Set(docs.map((doc) => doc.className));
-  return res.json({ msg: "Found list of classes.", classes: Array.from(classes) });
 });
 
 /**
@@ -288,29 +270,6 @@ documentRouter.get("/:id", async (req, res) => {
     },
     data: result,
   });
-});
-
-/**
- * Update student name after teacher review
- */
-documentRouter.post("/update-student-name/:id", async (req, res) => {
-  const documentId = req.params.id;
-  const { studentName } = req.body;
-
-  if (!studentName) {
-    return res.status(400).json({
-      success: false,
-      message: "Student name is required",
-    });
-  }
-
-  const result = await updateStudentNameAfterReview(documentId, studentName, req.user.uid);
-
-  if (!result.success) {
-    return res.status(404).json(result);
-  }
-
-  return res.status(200).json(result);
 });
 
 documentRouter.put("/update-annotations/:id", async (req, res) => {

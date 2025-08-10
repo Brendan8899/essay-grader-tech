@@ -38,12 +38,6 @@ const bucket = storage.bucket(bucketName);
 
 const questionRouter = express.Router();
 
-questionRouter.get("/", (_req, res) => {
-  res.send("Welcome to the questionRouter server!");
-});
-
-// CRUD Operations
-// Please refer to zod schema
 const Question = z.object({
   topic: z.string(),
   instruction: z.string(),
@@ -51,7 +45,6 @@ const Question = z.object({
 });
 
 questionRouter.post("/list", async (req, res) => {
-  // not implement filter yet
   try {
     const { page, filter = {} } = req.body || {};
 
@@ -79,7 +72,6 @@ questionRouter.post("/list", async (req, res) => {
 
 async function deleteFile(fileName) {
   const targetFile = process.env.GOOGLE_STORAGE_BUCKET_UPLOADED_QUESTIONS + "/" + fileName;
-  console.info("Delete File Triggered");
   try {
     await bucket.file(targetFile).delete();
   } catch (_error) {
@@ -126,7 +118,6 @@ questionRouter.post("/update", upload.array("files"), async (req, res) => {
 
   deletedFiles.forEach(deleteFile);
 
-  // todo: handle added files
   const files = req.files ?? [];
   for await (const file of files) {
     const timestamp = getFormattedDate();
