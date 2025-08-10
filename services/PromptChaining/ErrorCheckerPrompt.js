@@ -1,108 +1,106 @@
 // eslint-disable no-useless-escape
 /**
  *
- * @param {any} extractedText the text to be checked for errors
- * @returns {String} the response of the AI, which is a JSON string, in markdown code block
+ * @param {any} extractedText The essay text to be checked for errors.
+ * @returns {string} A JSON string wrapped in a markdown code block listing all detected errors.
  */
-//TODO: implement syntax and content error in backend, database and frontend
 const checkEssayError = (extractedText) => {
   return `
-Act as an expert English teacher and review this AI-transcribed handwritten essay with meticulous attention to detail. Identify ALL errors especially minor ones typically overlooked, but also considering it was already transcribed by AI so it may have spacing or line break issue. Follow UK English spelling standards, not US English.
+Act as a highly skilled English teacher carefully reviewing this AI-transcribed handwritten essay. Identify all errors, including subtle ones often missed, while accounting for possible spacing or line break issues from AI transcription. Use UK English spelling conventions only.
 
-feedback_type: Categorize as one of:
-- "spelling": Any misspelled words
-- "grammar": Subject-verb agreement, tense, verb forms, pronouns, articles, plural-singular errors, etc.
-- "punctuation": Capitalization, commas, periods, apostrophes, spacing, etc.
+Error categories (use these exact lowercase values):
+- "spelling": Incorrectly spelled words
+- "grammar": Subject-verb agreement, verb tense, pronouns, articles, singular/plural forms, etc.
+- "punctuation": Issues with capitalization, commas, full stops, apostrophes, spacing, and more
 
-You should return all the errors you identified in JSON format with these fields:
-Output: A list of errors in JSON format that includes:
+Expected output:
+A JSON array listing all identified errors. Each entry must include:
 
-feedback_type: Categorize as "spelling", "grammar", "punctuation"
-feedback_context: Include the full sentence containing the error
-underline: Specify the exact word(s) or phrase that contains the error
-feedback: Provide the correction plus a concise but COMPREHENSIBLE (to a student aged 7 - 12). Do not use advanced words to explain, i.e superlative, possessive form, etc. when explaining as 7-12 year old students have limited vocabulary and do not understand these words) explanation in one sentence, following the feedback format(18 words maximum)
-example of one error for each feedback_type:
+- feedback_type: One of the categories above
+- feedback_context: The full sentence containing the error
+- underline: The exact word(s) or phrase with the error
+- feedback: A simple correction with a brief explanation understandable to children aged 7 to 12 (max 18 words). Avoid complex vocabulary.
+
+Example error entries:
 
 {
-    "feedback_type": "grammar",
-    "feedback_context": "Tears streamed her face, as she sat at a bench",
-    "underline": "Tears streamed her face",
-    "feedback": "The phrase 'Tears streamed her face' is missing a preposition. It should be 'Tears streamed down her face'."
+  "feedback_type": "grammar",
+  "feedback_context": "Tears streamed her face, as she sat at a bench",
+  "underline": "Tears streamed her face",
+  "feedback": "Missing a preposition: 'Tears streamed down her face' is correct."
 },
 {
   "feedback_type": "spelling",
   "feedback_context": "She heard a terrible rumor spreading around the class.",
   "underline": "rumor",
-  "feedback": "In UK English, 'rumor' is spelled 'rumour'."
+  "feedback": "In UK English, spell 'rumor' as 'rumour'."
 },
 {
-    "feedback_type": "punctuation",
-    "feedback_context": "Turns out the packets of powder was drugs that",
-    "underline": "Turns out the packets",
-    "feedback": "There should be a comma after 'Turns out' – 'Turns out, the packets of powder...'"
+  "feedback_type": "punctuation",
+  "feedback_context": "Turns out the packets of powder was drugs that",
+  "underline": "Turns out the packets",
+  "feedback": "Add a comma after 'Turns out': 'Turns out, the packets...'"
 },
 
+Guidelines:
+- Use essay context to determine if something is an error; some words are errors only in context.
+- Ignore crossed-out words (like ~~word~~); treat them as if absent.
+- Focus solely on errors; do not provide positive feedback.
+- Identify every error, no matter how small.
+- Escape all quotation marks inside word arrays with backslashes: \\"example\\".
+- Always use lowercase for feedback_type.
+- Ensure no spelling, grammar, or punctuation errors are missed.
+- Return only the JSON array inside a markdown code block; no extra text.
 
-Important Notes:
-- You must understand the context of the essay and use those contexts to identify each error. Some errors are not errors on their own, but in that sentence it’s an error.
-- If a word is crossed out, eg. ~~word~~, treat the word as not being there and do not include it in the feedback.
-- Do not give any feedback on what the essay has done well and focus only on the errors.
-- Do not overlook any errors, regardless of how minor they may seem. Be thorough and exhaustive in your analysis, treating this as if you were grading for a high-stakes English proficiency exam.
-- All QUOTATION MARKS within word arrays MUST be escaped with BACKSLASH like: "\\"Line of text...\\""
-- ALWAYS USE LOWERCASE FOR FEEDBACK_TYPE VALUES. For example, use "spelling" not "Spelling".
-- ENSURE ALL SPELLING, GRAMMAR, AND PUNCTUATION ERRORS ARE IDENTIFIED. ESPECIALLY FOR SPELLING, ENSURE THAT NO SPELLING ERRORS ARE MISSED OUT.
-- ONLY RETURN a JSON array in a markdown code block. NO COMMENTS OR DESCRIPTIONS
+Notes:
+- Refer to full stops as “full stop,” not “period” or “dot.”
+- Do not give feedback on spacing before/after commas due to handwriting variability.
 
-Special Notes:
-- When referring to punctuation marks, use “full stop” instead of “period” or “dot.”
-- Ignore any feedback about spacing errors before/after commas due to the handwritten nature of the essay.
-
-
-Here's the essay: 
-    ${extractedText}
-    `;
+Essay:
+${extractedText}
+  `;
 };
 
 /**
- * Generates a prompt to validate and deduplicate AI-generated feedback against the original essay.
+ * Creates a prompt to validate and remove duplicate or incorrect feedback based on the original essay.
  *
- * @param {string} extractedText - The plain text of the original essay to validate feedback against.
- * @param {string} JSONString - A stringified JSON array containing feedback items to be checked.
- * @returns {string} - A formatted prompt string ready to be sent to an AI model for validation and cleanup.
+ * @param {string} extractedText - The original essay content.
+ * @param {string} JSONString - JSON string containing feedback entries to check.
+ * @returns {string} A formatted prompt for an AI model to verify and deduplicate feedback.
  */
 const removeDuplicateError = (extractedText, JSONString) => {
   return `
-You are given two inputs:
-An essay in plain text.
-A JSON array containing feedback items on the essay.
-Each feedback item includes:
-feedback_type: The type of issue (spelling, grammar, punctuation).
-feedback_context: The full sentence from the essay containing the issue.
-underline: The specific word or phrase flagged.
-feedback: The explanation of the issue.
+You have two inputs:
+- A plain text essay.
+- A JSON array of feedback items about the essay.
 
-Your Tasks:
-1. Meaningful Feedback Validation
-Read the essay carefully to understand the full meaning of the content.
-For each feedback item:
-Check if the feedback makes sense based on the essay content.
-Remove the feedback if the identified issue does not actually exist, even if the sentence and underline appear to match.
-Keep the feedback only if the issue is truly valid according to the essay’s context.
-2. Redundant or Overlapping Feedback Cleanup
-Identify redundant or overlapping feedbacks by checking if:
-Two or more feedback items are about the same issue or error.
-One feedback is more general or already covers the other.
-Keep the clearest or largest meaningful feedback, and remove the unnecessary duplicates.
-Do not remove feedback that discusses different issues, even if the contexts overlap.
+Each feedback includes:
+- feedback_type: Issue category (spelling, grammar, punctuation).
+- feedback_context: Sentence from the essay containing the issue.
+- underline: Specific word(s) or phrase flagged.
+- feedback: Explanation of the issue.
 
-Output Format:
-Return only the final JSON array wrapped in a Markdown code block.
-Do not include any comments, explanations, or extra text.
+Tasks:
+1. Validate Each Feedback
+- Carefully read the essay to understand its meaning.
+- Verify if each reported issue truly exists.
+- Remove feedback if the problem is not actually present, even if sentence and underline match.
+- Keep only accurate and valid feedback.
 
-Here is the essay:
-    ${extractedText}
-Here is the JSON array:
-	${JSONString}
-	`;
+2. Remove Duplicate or Overlapping Feedback
+- Identify feedback items referring to the same error.
+- Retain the clearest or most detailed feedback.
+- Do not remove feedback about different issues even if contexts overlap.
+
+Output:
+Return only the cleaned JSON array wrapped in a markdown code block. Do not include comments or explanations.
+
+Essay:
+${extractedText}
+
+Feedback JSON array:
+${JSONString}
+  `;
 };
+
 module.exports = { checkEssayError, removeDuplicateError };

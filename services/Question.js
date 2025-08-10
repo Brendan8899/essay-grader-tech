@@ -1,11 +1,9 @@
 const { InputQuestionPdf } = require("../mongoDB_schema");
-const logger = require("../utils/logger.js")("Question");
 
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const OpenAI = require("openai");
 const openai = new OpenAI({
-  apiKey: openaiApiKey,
-  dangerouslyAllowBrowser: true,
+  apiKey: openaiApiKey
 });
 
 async function getTextFromImages(base64Array) {
@@ -44,14 +42,9 @@ async function getTextFromImages(base64Array) {
       max_tokens: 16384,
     });
 
-    logger.info("Tokens used for question generation:");
-    logger.info("Input tokens: " + res.usage.prompt_tokens);
-    logger.info("Output tokens: " + res.usage.completion_tokens);
-    logger.info("Total tokens: " + res.usage.total_tokens);
-
     return res.choices[0].message.content;
   } catch (error) {
-    logger.error(error);
+    console.error(error);
     return "";
   }
 }
@@ -93,7 +86,6 @@ function escapeRegExp(string) {
 }
 
 function searchConditionConstructor(userId, filter = {}) {
-  // TODO
   const searchConditions = { userId: userId };
   const escapedSearch = escapeRegExp(filter.search);
 

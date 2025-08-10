@@ -1,7 +1,6 @@
 const { InputPdf } = require("../mongoDB_schema");
 const { processOutput, addErrors: openAIAddErrors } = require("./OpenAI");
-const { processImageForStudentNameAndVerify } = require("./NameExtractor");
-const logger = require("../utils/logger.js")("DocumentService");
+const { processFileForNameVerification } = require("./NameExtractor");
 const { sendByUserId } = require("../websocket.js");
 
 function escapeRegExp(string) {
@@ -240,7 +239,7 @@ async function createDocumentWithVerification(userId, data, filename, filePath, 
   });
 
   // Process image to extract and verify student name in the background
-  const nameResult = await processImageForStudentNameAndVerify(
+  const nameResult = await processFileForNameVerification(
     filePath,
     outputBasePath,
     userId,
@@ -257,11 +256,11 @@ async function createDocumentWithVerification(userId, data, filename, filePath, 
       nameExtractionStatus: "completed", // Update status
     });
   } catch (err) {
-    logger.error("Error updating document with extracted name:", err);
+    console.error("Error updating document with extracted name:", err);
     InputPdf.findByIdAndUpdate(newInputPDF._id, {
       studentName: "No Name Found",
       nameExtractionStatus: "failed",
-    }).catch((updateErr) => logger.error(updateErr));
+    }).catch((updateErr) => console.error(updateErr));
   }
 
   await sendByUserId(userId, "Name-Extraction", {
@@ -312,9 +311,9 @@ async function updateStudentNameAfterReview(documentId, studentName, userId) {
           className: document.className,
           studentName: studentName.trim(),
         });
-        logger.info(`Added new student "${studentName}" to class "${document.className}"`);
+        console.info(`Added new student "${studentName}" to class "${document.className}"`);
       } catch (addError) {
-        logger.error("Error adding student to database:", addError);
+        console.error("Error adding student to database:", addError);
         // Continue with document update even if student addition fails
       }
     }
@@ -336,7 +335,7 @@ async function updateStudentNameAfterReview(documentId, studentName, userId) {
       document: updatedDoc,
     };
   } catch (error) {
-    logger.error("Error updating student name:", error);
+    console.error("Error updating student name:", error);
     throw error;
   }
 }

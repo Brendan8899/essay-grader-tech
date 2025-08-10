@@ -10,7 +10,6 @@ const { imageToBase64 } = require("../utils/encodeToBase64.js");
 const { Storage } = require("@google-cloud/storage");
 const vision = require("@google-cloud/vision");
 const { getResponseFromAi } = require("./PromptChaining/PromptChainingLogic.js");
-const logger = require("../utils/logger.js")("AIGraderWorker");
 
 const { updateAIResponseToDocument, updateDuplicatedDocument } = require("./Document.service.js");
 const {
@@ -21,7 +20,6 @@ const {
   generateDescriptionLines,
   parseJSONString,
 } = require("./GoogleVision.js");
-const { removeStruckWords } = require("./VertexAI.js");
 const {
   getAIResponseWithImages,
   getTextFromImages,
@@ -60,9 +58,9 @@ async function connect() {
       connectTimeoutMS: 30000,
       socketTimeoutMS: 45000,
     });
-    logger.info("Connected successfully to MongoDB!");
+    console.info("Connected successfully to MongoDB!");
   } catch (error) {
-    logger.error(error);
+    console.error(error);
   }
 }
 
@@ -154,8 +152,6 @@ myQueue.process(async (job) => {
     const [results] = await googleVisionClient.documentTextDetection(imagePath);
 
     let processingArray = getBoundingPolyVertices(results);
-    // We will remove the struck-through words here using Vertex AI!
-    processingArray = await removeStruckWords(processingArray, imagePath);
 
     const [sentences, correspondingCoordinates] = rearrangeText(processingArray);
     allSentences.push(...sentences);
@@ -211,7 +207,7 @@ myQueue.process(async (job) => {
     },
   });
 
-  logger.info("Combined raw image created and uploaded!");
+  console.info("Combined raw image created and uploaded!");
 
   imageFiles = await fs.readdir(labelledPath);
 
@@ -233,7 +229,7 @@ myQueue.process(async (job) => {
       destination: "uploaded_documents/" + gsLabelledImagesPath + imageFile,
     });
 
-    logger.info("GS Labelled Images Uploaded!!! ");
+    console.info("GS Labelled Images Uploaded!!! ");
   }
 
   const pdfBytes = await pdfDoc.save();
@@ -253,7 +249,7 @@ myQueue.process(async (job) => {
   await bucket.upload(tempPath, {
     destination: `${process.env.GOOGLE_STORAGE_BUCKET_UPLOADED_FOLER}/${originalPdfDestination}`,
   });
-  logger.info("Original PDF Uploaded!!!");
+  console.info("Original PDF Uploaded!!!");
 
   // Uploading documents
   await bucket.upload(finalPdfPath, {
@@ -273,8 +269,6 @@ myQueue.process(async (job) => {
     tempPath: file.path,
   };
 
-  logger.info("GS Documents Uploaded!!!");
-
   var questionImageURL;
   if (questionChoice && questionChoice.filePaths) {
     questionImageURL = await getQuestionImagesFromStorage(questionChoice.filePaths);
@@ -293,7 +287,7 @@ myQueue.process(async (job) => {
     customInstructions: inputPdf.customInstructions,
   };
 
-  logger.info("Preparing AI request with grade: " + inputPdf.grade);
+  console.info("Preparing AI request with grade: " + inputPdf.grade);
 
   // Get AI Response from OpenAi
   const response = await getAIResponseWithImages(
@@ -306,7 +300,7 @@ myQueue.process(async (job) => {
   try {
     await updateAIResponseToDocument(inputPdf, response, fileResponse, annotationResult, boundary);
   } catch (error) {
-    logger.error(error);
+    console.error(error);
   }
 
   fs.rmSync(baseOutputPath, { recursive: true, force: true });
@@ -315,7 +309,7 @@ myQueue.process(async (job) => {
 });
 
 myQueue.on("failed", async (job, err) => {
-  logger.error(err);
+  console.error(err);
 
   if (job.attemptsMade >= job.opts.attempts) {
     const { userId, inputPdf } = job.data;
@@ -338,7 +332,6 @@ myQueue.on("failed", async (job, err) => {
 // Handle job completion
 myQueue.on("completed", async (job, result) => {
   const { userId, inputPdf } = job.data;
-  logger.info(`(ID: ${job.id}) completed with result: ${result}`);
   redis.publish(
     "Document-Status",
     JSON.stringify({ userId: userId, newInputPdfid: inputPdf._id, processed: true })

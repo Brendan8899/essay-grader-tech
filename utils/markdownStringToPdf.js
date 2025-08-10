@@ -1,18 +1,17 @@
 const marked = require("marked");
 const browserPromiseInstance = require("./puppeteerInstance.js");
-const logger = require("./logger.js")("markdownStringToPdf");
 
 async function markdownToPdfBytes(markdownString, width, height) {
   let page = null;
 
   try {
     if (!markdownString || typeof markdownString !== "string") {
-      logger.warn(`Invalid markdown string: ${typeof markdownString}`);
+      console.warn(`Invalid markdown string: ${typeof markdownString}`);
       markdownString = "# Empty Feedback";
     }
 
     // Convert markdown to HTML
-    logger.info(`Parsing markdown to HTML, length: ${markdownString.length}`);
+    console.info(`Parsing markdown to HTML, length: ${markdownString.length}`);
     let htmlContent;
     try {
       htmlContent = `
@@ -49,7 +48,7 @@ async function markdownToPdfBytes(markdownString, width, height) {
         </html>
       `;
     } catch (parseError) {
-      logger.error(`Error parsing markdown: ${parseError.message}`);
+      console.error(`Error parsing markdown: ${parseError.message}`);
       htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -75,10 +74,10 @@ async function markdownToPdfBytes(markdownString, width, height) {
     page = await browser.newPage();
 
     await page.setContent(htmlContent, { waitUntil: "domcontentloaded" });
-    logger.info("HTML content set to page");
+    console.info("HTML content set to page");
 
     const scale = 0.75;
-    logger.info(`Generating PDF with dimensions: ${width / scale}x${height / scale}`);
+    console.info(`Generating PDF with dimensions: ${width / scale}x${height / scale}`);
     const pdfBytes = await page.pdf({
       printBackground: true,
       width: width / scale,
@@ -94,7 +93,7 @@ async function markdownToPdfBytes(markdownString, width, height) {
     await page.close();
     return pdfBytes;
   } catch (error) {
-    logger.error(error);
+    console.error(error);
 
     throw error;
   }

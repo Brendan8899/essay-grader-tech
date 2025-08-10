@@ -1,5 +1,4 @@
 const express = require("express");
-const logger = require("../utils/logger.js")("GoogleVisionRouter");
 const multer = require("multer");
 const { createDocument, createDocumentWithVerification } = require("../services/Document.service");
 const { InputQuestionPdf } = require("../mongoDB_schema.js");
@@ -8,14 +7,27 @@ const { myQueue } = require("../services/QueueProvider.js");
 const googleVisionRouter = express.Router();
 const upload = multer({ dest: "C:/tmp/" });
 
+/**
+ * Expects a multipart/form-data request with:
+ * - files: one or more files to upload (field name: "files")
+ * - userId: testing or specific userId
+ * - className (string): if present, triggers student name verification workflow
+ * - assignmentName
+ * - grade: (Which Level you are marking for: P5/P6)
+ * - essayType: Narrative
+ * - awardPoints: Creative
+ * - customInstructions: null || String
+ */
+
 googleVisionRouter.post("/upload", upload.array("files"), async (req, res) => {
+  const userId = req.user?.userId || 'testing';
   const jobs = [];
 
   const { className, questionId } = req.body;
   const questionChoice = questionId ? await InputQuestionPdf.findById(questionId) : null;
 
   const files = req.files;
-  logger.info("Iterating Through Files");
+  console.info("Iterating Through Files");
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     let newInputPdf;
@@ -24,11 +36,10 @@ googleVisionRouter.post("/upload", upload.array("files"), async (req, res) => {
     if (className) {
       // Create a temporary path for processing
       const timestamp = new Date().getTime();
-      const outputBasePath = `C:/tmp/name_extraction_${req.user.uid}_${timestamp}`;
+      const outputBasePath = `C:/tmp/name_extraction_${userId}_${timestamp}`;
 
-      // Create the document with student name verification
       const result = await createDocumentWithVerification(
-        req.user.uid,
+        userId,
         req.body,
         file.originalname,
         file.path,
@@ -38,7 +49,7 @@ googleVisionRouter.post("/upload", upload.array("files"), async (req, res) => {
       newInputPdf = result.document;
 
       // Log verification result
-      logger.info(
+      console.info(
         `Name extraction for ${file.originalname}: ${JSON.stringify({
           extractedName: result.nameResult.extractedName,
           verified: result.nameResult.verificationResult.verified,
@@ -52,7 +63,7 @@ googleVisionRouter.post("/upload", upload.array("files"), async (req, res) => {
 
     const job = await myQueue.add(
       {
-        userId: req.user.uid,
+        userId,
         inputPdf: newInputPdf,
         file,
         questionChoice,
@@ -67,8 +78,6 @@ googleVisionRouter.post("/upload", upload.array("files"), async (req, res) => {
         timeout: 1200000, //20 Minutes Timeout
       }
     );
-
-    logger.info(`Job added to queue: ${job.id}`);
 
     jobs.push(job);
   }

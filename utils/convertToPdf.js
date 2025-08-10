@@ -1,6 +1,5 @@
 const { exec } = require("child_process");
 const fs = require("fs");
-const logger = require("./logger.js")("convertToPdf");
 const path = require("path");
 
 function convertDocxToPDF(file) {
@@ -21,17 +20,17 @@ function convertDocxToPDF(file) {
 
     exec(command, (error, _stdout, stderr) => {
       if (error) {
-        logger.error(`Error during conversion: ${error.message}`);
+        console.error(`Error during conversion: ${error.message}`);
         return reject(new Error(`Conversion failed: ${error.message}`));
       }
       if (stderr) {
-        logger.error(`stderr: ${stderr}`);
+        console.error(`stderr: ${stderr}`);
         // Depending on the scenario, you might want to treat stderr as a warning
       }
 
       // Check if output PDF exists
       if (!fs.existsSync(outputPdfPath)) {
-        logger.error("Conversion failed: Output PDF not found.");
+        console.error("Conversion failed: Output PDF not found.");
         return reject(new Error("Conversion failed: Output PDF not found."));
       }
 
@@ -45,7 +44,7 @@ function convertDocxToPDF(file) {
 
         resolve(pdfBuffer);
       } catch (err) {
-        logger.error(err);
+        console.error(err);
         reject(err);
       }
     });

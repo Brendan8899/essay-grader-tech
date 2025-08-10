@@ -1,6 +1,5 @@
 const { Group, Line, FabricText } = require("fabric/node");
 const DOCUMENT = require("../../config/document.js");
-const logger = require("../../utils/logger.js")("AnnotationGenerator");
 
 const STROKE_WIDTH = 4;
 const LABEL_FONT_SIZE = 30;
@@ -113,7 +112,7 @@ function createUnderlinesFromCoordinates(annotation, color = "black") {
   const underlines = [];
 
   if (!Array.isArray(coordinates)) {
-    logger.warn("Invalid coordinates: not an array");
+    console.warn("Invalid coordinates: not an array");
     return underlines;
   }
 
@@ -184,7 +183,7 @@ function generateAnnotation(annotation, type, isPreviousVersion) {
   const { index, uniqueId, page } = annotation;
   const meta = TYPE_META[type];
   if (!meta) {
-    logger.warn(`Unknown annotation type: ${type}`);
+    console.warn(`Unknown annotation type: ${type}`);
     return null;
   }
 
@@ -197,7 +196,7 @@ function generateAnnotation(annotation, type, isPreviousVersion) {
   const lastCoords = getAdjustedCoordinates(lastCoordsRaw, page);
 
   if (firstCoords.length < 4 || lastCoords.length < 4) {
-    logger.warn(`Invalid coordinates for ${type} annotation`);
+    console.warn(`Invalid coordinates for ${type} annotation`);
     return null;
   }
 

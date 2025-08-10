@@ -1,6 +1,5 @@
 const http = require("http");
 const { Server } = require("socket.io");
-const logger = require("./utils/logger.js")("WebSocket");
 const Redis = require("ioredis");
 const redisConfig = require("./config").REDIS;
 const redis = new Redis(redisConfig);
@@ -11,7 +10,7 @@ let ioInstance;
 const sendByUserId = async (userId, eventName, message) => {
   const socketId = await redisDataClient.get(userId);
   if (!socketId) {
-    logger.warn(`No socket found for userId: ${userId}`);
+    console.warn(`No socket found for userId: ${userId}`);
     return;
   }
   await ioInstance?.to(socketId).emit(eventName, message);
@@ -39,7 +38,7 @@ const createServer = (app) => {
 
     socket.on("disconnect", () => {
       const userId = socket.data?.userId;
-      logger.info(`User ${userId} disconnected from socket ${socket.id}`);
+      console.info(`User ${userId} disconnected from socket ${socket.id}`);
     });
   });
 
@@ -48,9 +47,9 @@ const createServer = (app) => {
 
 redis.subscribe("Document-Status", (err, count) => {
   if (err) {
-    logger.error("Failed to subscribe: %s", err.message);
+    console.error("Failed to subscribe: %s", err.message);
   } else {
-    logger.info(
+    console.info(
       `Subscribed successfully! This client is currently subscribed to ${count} channels.`
     );
   }

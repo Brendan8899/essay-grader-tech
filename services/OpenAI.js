@@ -1,5 +1,4 @@
 const masterPrompt = require("./masterPrompt");
-const logger = require("../utils/logger.js")("OpenAI");
 
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const OpenAI = require("openai");
@@ -71,7 +70,7 @@ async function getAIResponseWithImages(extractedText, data, questionChoice, ques
 
       // 2. Safely check if it is indeed an array
       if (!Array.isArray(base64Images)) {
-        logger.error("encodeToBase64 did not return an array");
+        console.error("encodeToBase64 did not return an array");
         continue;
       }
 
@@ -94,7 +93,7 @@ async function getAIResponseWithImages(extractedText, data, questionChoice, ques
 
     return res.choices[0].message.content;
   } catch (error) {
-    logger.error(error);
+    console.error(error);
     return "";
   }
 }
@@ -127,7 +126,7 @@ async function getTextFromImages(base64Array) {
     });
     return res.choices[0].message.content;
   } catch (error) {
-    logger.error(error);
+    console.error(error);
     return ""; // Return an empty string in case of error to handle gracefully
   }
 }
@@ -227,10 +226,6 @@ async function classifyStrengthAndWeakness(feedback) {
     max_completion_tokens: 16384,
     response_format: { type: "json_object" },
   });
-  logger.info("Tokens used for classify strength and weakness:");
-  logger.info("Input tokens: " + res.usage.prompt_tokens);
-  logger.info("Output tokens: " + res.usage.completion_tokens);
-  logger.info("Total tokens: " + res.usage.total_tokens);
   return res.choices[0].message.content;
 }
 

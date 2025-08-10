@@ -1,4 +1,3 @@
-const logger = require("../utils/logger.js")("GoogleVisionService");
 
 /**
  * Joins groups of sentences into a formatted string with line indices.
@@ -46,58 +45,6 @@ function findLineInPage(pages, lineNumber) {
   return -1; // If the line number exceeds the total lines
 }
 
-/**
- * Utility function to normalize words by removing punctuation and converting to lowercase.
- * @param {string} word - The word to normalize.
- * @returns {string} - The normalized word.
- */
-function normalizeWord(word) {
-  return word
-    .replace(/[^\w\s]|_/g, "")
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-}
-
-/**
- * Finds the index of the word in matchingSentence that best matches firstWord.
- * @param {string} firstWord - The word to match against.
- * @param {string[]} matchingSentence - An array of words to search.
- * @returns {number} - The index of the best matching word. Returns -1 if the array is empty or invalid.
- */
-function fuzzyfind(firstWord, matchingSentence) {
-  if (!Array.isArray(matchingSentence) || matchingSentence.length === 0) {
-    return -1;
-  }
-
-  let bestMatchIndex = -1;
-  let highestSimilarity = -1;
-
-  // Normalize the firstWord once to avoid repeated processing
-  const normalizedFirstWord = normalizeWord(firstWord);
-
-  for (let i = 0; i < matchingSentence.length; i++) {
-    const currentWord = matchingSentence[i];
-    const normalizedCurrentWord = normalizeWord(currentWord);
-
-    // Calculate Levenshtein distance
-    const distance = levenshteinDistance(normalizedFirstWord, normalizedCurrentWord);
-    const maxLength = Math.max(normalizedFirstWord.length, normalizedCurrentWord.length);
-
-    // Handle case where both words are empty after normalization
-    if (maxLength === 0) {
-      continue;
-    }
-
-    const similarity = 1 - distance / maxLength;
-
-    if (similarity > highestSimilarity) {
-      highestSimilarity = similarity;
-      bestMatchIndex = i;
-    }
-  }
-  return bestMatchIndex;
-}
-
 // TODO: make the parsing more robust, find page more robust, the extracted text may be useful for find page
 // eslint-disable-next-line no-unused-vars
 function parseJSONString(checkerResponseStr, extractedText, pageTotalLines) {
@@ -122,7 +69,7 @@ function parseJSONString(checkerResponseStr, extractedText, pageTotalLines) {
       });
     return processedJSON;
   } catch (error) {
-    logger.error("Error parsing JSON string:", error);
+    console.error("Error parsing JSON string:", error);
     return [];
   }
 }
@@ -254,7 +201,7 @@ function preprocess(processingArray) {
  */
 function getAnnotation(aiResponse, sentences, coordinatesMap) {
   if (!Array.isArray(aiResponse) || !Array.isArray(sentences) || !Array.isArray(coordinatesMap)) {
-    logger.error("Invalid input types for getAnnotation");
+    console.error("Invalid input types for getAnnotation");
     return [];
   }
   const temp = aiResponse.map((error) => {
@@ -320,7 +267,7 @@ function getBestMatch(target, sentence, hasNextLine = false) {
   let end = -1;
 
   if (sentence.length < target.length) {
-    logger.error("invalid input!");
+    console.error("invalid input!");
     return [start, end];
   }
 
@@ -385,6 +332,5 @@ module.exports = {
   rearrangeText,
   generateDescriptionLines,
   findLineInPage,
-  fuzzyfind,
   parseJSONString,
 };

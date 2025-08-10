@@ -4,7 +4,6 @@ const {
   getStudentsByClass,
   getClassesByTeacher,
   deleteStudent,
-  verifyStudentName,
   updateStudent,
 } = require("../services/StudentService");
 
@@ -121,47 +120,6 @@ studentRouter.post("/batch", async (req, res) => {
   });
 });
 
-/**
- * Verify a student name against database
- */
-studentRouter.post("/verify", async (req, res) => {
-  const { studentName, className } = req.body;
-
-  if (!studentName || !className) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields: studentName, and className are required",
-      verified: false,
-      exactMatch: false,
-      finalName: studentName || "No Name",
-    });
-  }
-
-  const verificationResult = await verifyStudentName(req.user.uid, studentName, className);
-
-  // Determine final name to use
-  let finalName;
-
-  if (verificationResult.exactMatch) {
-    // If exact match found, use the database version (with correct capitalization)
-    finalName = verificationResult.student.studentName;
-  } else if (studentName.trim() !== "") {
-    // If no exact match but we have a name, use the provided name
-    finalName = studentName;
-  } else {
-    // If no name was provided, use "No Name"
-    finalName = "No Name";
-  }
-
-  return res.status(200).json({
-    success: true,
-    verified: verificationResult.verified,
-    exactMatch: verificationResult.exactMatch,
-    similarMatches: verificationResult.similarMatches || [],
-    finalName,
-    message: verificationResult.message,
-  });
-});
 
 /**
  * Update a student's name

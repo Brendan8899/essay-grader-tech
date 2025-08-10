@@ -1,7 +1,6 @@
 const express = require("express");
 const multer = require("multer");
 const Queue = require("bull");
-const logger = require("../utils/logger.js")("QuestionRouter");
 const redisConfig = require("../config").REDIS;
 const fs = require("fs-extra");
 const path = require("path");
@@ -73,18 +72,18 @@ questionRouter.post("/list", async (req, res) => {
     }));
     res.status(200).json({ msg: "ok", body: response });
   } catch (error) {
-    logger.error(error);
+    console.error(error);
     res.status(500).json({ msg: "Internal Server Error" });
   }
 });
 
 async function deleteFile(fileName) {
   const targetFile = process.env.GOOGLE_STORAGE_BUCKET_UPLOADED_QUESTIONS + "/" + fileName;
-  logger.info("Delete File Triggered");
+  console.info("Delete File Triggered");
   try {
     await bucket.file(targetFile).delete();
   } catch (_error) {
-    logger.error("Error occurred during the deletion of Files");
+    console.error("Error occurred during the deletion of Files");
   }
 }
 
@@ -142,7 +141,7 @@ questionRouter.post("/update", upload.array("files"), async (req, res) => {
         destination: `${process.env.GOOGLE_STORAGE_BUCKET_UPLOADED_QUESTIONS}/${finalPdfDestinaton}`,
       });
     } catch (_error) {
-      logger.error("Failed to upload file");
+      console.error("Failed to upload file");
     }
   }
 
@@ -196,17 +195,13 @@ const getFormattedDate = () => {
 
 // handling jobs
 myQueue.process(async (job) => {
-  logger.info(`⚙️ Processing job ${job.id}`);
+  console.info(`⚙️ Processing job ${job.id}`);
   // handling file directories
   const { files, instruction, userId } = job.data;
   let { topic } = job.data;
   const timestamp = getFormattedDate();
   let baseOutputPath = undefined;
   const isUploadingExistingQuestion = instruction === "";
-  // Case 1: user has uploaded a file.
-  // Case 1.1 If `instruction` is specified, no OpenAI is required.
-  // Case 1.2 Otherwise, OpenAI is required.
-  // Case 2: No files are provided: user must provide `instruction` for this task.
 
   var base64Images = [];
   if (files.length > 0) {
@@ -217,7 +212,6 @@ myQueue.process(async (job) => {
       baseOutputPath = path.resolve(outputFolderPath);
       await fs.ensureDir(baseOutputPath);
       const tempPath = file.path;
-      logger.info("PROCESSING", tempPath);
       const folderFileName = path.parse(file.originalname).name;
       const outputPath = path.join(baseOutputPath, folderFileName);
       await fs.ensureDir(outputPath);
@@ -250,15 +244,13 @@ myQueue.process(async (job) => {
           destination: finalPdfDestinatonGS,
         });
       } catch (_error) {
-        logger.error("Failed to upload file");
+        console.error("Failed to upload file");
       }
       googleStoragePaths.push(finalPdfDestinaton);
     }
 
     // Case 1.1: No instruction has been provided: use OpenAI to extract instruction.
     if (isUploadingExistingQuestion) {
-      logger.info(`✨ Processing ...`);
-      logger.info("⚙️ READ ALL IMAGES");
       let text = await getTextFromImages(base64Images);
       text = text.replace(/^```json|```$/g, "").trim();
       const extractedText = JSON.parse(text);
@@ -286,12 +278,12 @@ myQueue.process(async (job) => {
 
 // Handle job completion
 myQueue.on("completed", (job, result) => {
-  logger.info(`Job ${job.id} completed with result: ${result}`);
+  console.info(`Job ${job.id} completed with result: ${result}`);
 });
 
 // Handle job failure
 myQueue.on("failed", async (_job, err) => {
-  logger.error(err);
+  console.error(err);
 });
 
 questionRouter.post("/upload", upload.array("files"), async (req, res) => {

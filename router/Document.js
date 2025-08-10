@@ -1,5 +1,4 @@
 const express = require("express");
-const logger = require("../utils/logger.js")("DocumentRouter");
 const { InputPdf, feedbackPreferences, InputPdfCanvas } = require("../mongoDB_schema");
 const path = require("path");
 const { Storage } = require("@google-cloud/storage");
@@ -8,15 +7,11 @@ const {
   updateStudentNameAfterReview,
   updateAnnotations,
 } = require("../services/Document.service");
-const { classifyStrengthAndWeakness } = require("../services/OpenAI");
 const multer = require("multer");
 const { deleteFilePath } = require("../utils/utils");
-const Queue = require("bull");
 const { ObjectId } = require("mongodb");
-const redisConfig = require("../config").REDIS;
 const {
   appendFeedback,
-  massAppendFeedback,
 } = require("../services/AppendFeedback/appendFeedback.service.js");
 
 const documentRouter = express.Router();
@@ -98,102 +93,6 @@ documentRouter.post("/appendFeedbackPreferences", async (req, res) => {
   return res.status(204).send();
 });
 
-/** d
- * Get overall strength and weakness by class and assignment (assignment is mandatory field).
- * If strength and weakness not set, calls OpenAI to set it.
- */
-documentRouter.post("/overall-strengths", async (req, res) => {
-  const uid = req.user.uid;
-  const className = req.query.className;
-  const assignmentName = req.query.assignmentName;
-
-  if (className && !assignmentName) {
-    return res.status(400).json({ msg: "Missing assignment name." });
-  }
-
-  if (!className && !assignmentName) {
-    return res.status(400).json({ msg: "Missing class and assignment name." });
-  }
-
-  const filteredData = [];
-
-  logger.info(
-    `Searching for documents with class=${className}, assignment=${assignmentName}, userId=${uid}`
-  );
-  const data = await InputPdf.find({
-    essayName: assignmentName,
-    userId: uid,
-    ...(className && { className }),
-  });
-
-  logger.info(`Found ${data.length} matching documents`);
-
-  // Count how many documents are still processing
-  const processingCount = data.filter((doc) => doc.processState === "processing").length;
-
-  // Process documents - should be much faster now as most will already have analysis
-  let pendingAnalysis = 0;
-
-  for (const essay of data) {
-    // Check if the document needs analysis (legacy support)
-    if (
-      essay.strengthsAndWeaknesses.strongAreas.length === 0 &&
-      essay.strengthsAndWeaknesses.weakAreas.length === 0 &&
-      essay.strengthsAndWeaknesses.mostCommonMistakes.length === 0
-    ) {
-      pendingAnalysis++;
-      logger.info(`Processing strengths/weaknesses for legacy document: ${essay._id}`);
-      try {
-        const newStrAndWk = await classifyStrengthAndWeakness(
-          JSON.stringify({ processedOutputAI: essay.processedOutputAI })
-        );
-        const updatedEssay = await InputPdf.findByIdAndUpdate(
-          essay._id,
-          { strengthsAndWeaknesses: JSON.parse(newStrAndWk) },
-          { new: true }
-        );
-        essay.strengthsAndWeaknesses = updatedEssay.strengthsAndWeaknesses;
-      } catch (error) {
-        logger.error(error);
-      }
-    }
-
-    const filteredFields = {
-      pointSystem: essay.pointSystem,
-      essayType: essay.essayType,
-      scores: essay.processedOutputAI.slice(0, 3),
-      className: essay.className,
-      essayName: essay.essayName,
-      studentName: essay.studentName,
-      strengthsAndWeaknesses: essay.strengthsAndWeaknesses,
-      processState: essay.processState, // Include process state for frontend use
-    };
-    filteredData.push(filteredFields);
-  }
-
-  if (pendingAnalysis > 0) {
-    logger.info(`Analyzed ${pendingAnalysis} legacy documents on-demand`);
-  }
-
-  // Create processing status object
-  const processingStatus = {
-    isProcessing: processingCount > 0,
-    processingCount: processingCount,
-    totalCount: data.length,
-    completionPercentage:
-      data.length > 0 ? Math.round(((data.length - processingCount) / data.length) * 100) : 100,
-  };
-
-  logger.info(
-    `Returning ${filteredData.length} processed documents. Processing status: ${processingStatus}`
-  );
-  return res.status(200).json({
-    msg: "Found documents with strengths and weaknesses.",
-    data: filteredData,
-    processingStatus: processingStatus,
-  });
-});
-
 documentRouter.get("/appendFeedbackPreferences", async (req, res) => {
   const userPreference = await feedbackPreferences.findOne({ userId: req.user.uid });
   if (!userPreference) {
@@ -207,19 +106,9 @@ documentRouter.get("/appendFeedbackPreferences", async (req, res) => {
 documentRouter.post("/appendFeedback", async (req, res) => {
   const { documentId, options, includeError } = req.body;
   const resultPdfBuffer = await appendFeedback(documentId, options, includeError);
-  logger.info(`PDF bytes generated successfully for document ${documentId}`);
 
   res.type("application/pdf");
   res.send(resultPdfBuffer);
-});
-
-documentRouter.post("/massAppendFeedback", async (req, res) => {
-  const { documentIds, options } = req.body;
-
-  logger.info(`Appending feedback to ${documentIds.length} documents`);
-  res.type("application/zip");
-  // pass in Response object for archiver to pipe into
-  await massAppendFeedback(documentIds, options, res);
 });
 
 documentRouter.post("/graded/:id", upload.single("file"), async (req, res) => {
@@ -270,63 +159,6 @@ documentRouter.post("/graded/:id", upload.single("file"), async (req, res) => {
   return res.status(200).json(result._doc);
 });
 
-documentRouter.post("/restore/:id", upload.single("file"), async (req, res) => {
-  const item = await InputPdf.findById(req.params.id);
-
-  if (!item) return res.status(404).json({ message: "Document is not found" });
-
-  const labelledDocumentArr = item.labelledDocumentPath.split("/");
-  labelledDocumentArr.pop();
-
-  const finalPdfDestination = labelledDocumentArr.join("/") + "/" + `final_document.pdf`;
-
-  // Prepare the update object for annotations
-  const updateObj = {
-    userAnnotations: [],
-    labelledDocumentPath: finalPdfDestination,
-    svgDocumentPath: finalPdfDestination,
-    canvasSave: false,
-  };
-
-  // Clear the 'deleted' flag from all annotations if they exist
-  if (item.annotations) {
-    // Clone the annotations to avoid modifying the original object
-    const updatedAnnotations = JSON.parse(JSON.stringify(item.annotations));
-
-    // Loop through each annotation type
-    Object.keys(updatedAnnotations).forEach((annotationType) => {
-      if (Array.isArray(updatedAnnotations[annotationType])) {
-        // Loop through each annotation and remove the deleted field
-        updatedAnnotations[annotationType].forEach((annotation) => {
-          delete annotation?.deleted;
-        });
-      }
-    });
-
-    // Add the updated annotations to our update object
-    updateObj.annotations = updatedAnnotations;
-  }
-
-  const updatedInputPDf = await InputPdf.findByIdAndUpdate(item._id, updateObj, {
-    new: true,
-  });
-
-  const inputPdfCanvas = await InputPdfCanvas.findOne({ inputPdfID: req.params.id });
-  await InputPdfCanvas.findOneAndUpdate(inputPdfCanvas._id, { canvasString: "" }, { new: true });
-
-  const uploadedHost = `${process.env.GOOGLE_STORAGE_BUCKET}/${process.env.GOOGLE_STORAGE_BUCKET_UPLOADED_FOLER}`;
-  const fileUrl = uploadedHost + "/" + updatedInputPDf?.labelledDocumentPath;
-  const svgFileUrl = uploadedHost + "/" + updatedInputPDf?.svgDocumentPath;
-
-  const restoredDocPathArr = updatedInputPDf.labelledDocumentPath.split("/");
-  restoredDocPathArr.pop();
-  const originalFileUrl = uploadedHost + "/" + restoredDocPathArr.join("/") + "/final_document.pdf";
-
-  const result = { ...item, _doc: { ...item._doc, fileUrl, svgFileUrl, originalFileUrl } };
-
-  return res.status(200).json(result._doc);
-});
-
 documentRouter.delete("/:id", async (req, res) => {
   const deletedItem = await InputPdf.findByIdAndDelete(req.params.id);
   await InputPdfCanvas.findOneAndDelete({ inputPdfID: req.params.id });
@@ -335,69 +167,6 @@ documentRouter.delete("/:id", async (req, res) => {
   return res.status(200).json({ message: "Item deleted" });
 });
 
-// Add new cancel endpoint
-documentRouter.post("/cancel/:id", async (req, res) => {
-  // Find document
-  const document = await InputPdf.findOne({ _id: req.params.id, userId: req.user.uid });
-  if (!document) {
-    return res.status(404).json({ message: "Document not found" });
-  }
-
-  let message = "";
-  let wasInQueue = false;
-
-  // Only try to cancel if document is in processing state
-  if (document.processState === "processing") {
-    try {
-      const myQueue = new Queue("myQueue", {
-        redis: redisConfig,
-      });
-
-      // Look for job using document ID
-      const job = await myQueue.getJob(document._id.toString());
-
-      if (job) {
-        // Check job state
-        const isWaiting = await job.isWaiting();
-        const isActive = await job.isActive();
-
-        if (isWaiting) {
-          // Remove job if it's still waiting
-          await job.remove();
-          message = "Document removed from processing queue";
-          wasInQueue = true;
-        } else if (isActive) {
-          message = "Document is already being processed, will be deleted";
-        } else {
-          message = "Document job found but is in an unexpected state";
-        }
-      } else {
-        message = "Document is marked as processing but no job found in queue";
-      }
-    } catch (error) {
-      logger.error(error);
-      message = "Error accessing processing queue";
-    }
-  } else {
-    message = `Document is in ${document.processState} state, not processing`;
-  }
-
-  // Delete the document instead of updating it
-  const deletedDoc = await InputPdf.findByIdAndDelete(req.params.id);
-
-  // Also delete any related canvas data
-  await InputPdfCanvas.findOneAndDelete({ inputPdfID: req.params.id });
-
-  if (!deletedDoc) {
-    return res.status(404).json({ message: "Failed to delete document" });
-  }
-
-  return res.status(200).json({
-    message: message,
-    wasInQueue: wasInQueue,
-    document: deletedDoc,
-  });
-});
 
 documentRouter.get("/files/:filename", (req, res, next) => {
   const filename = req.params.filename;
@@ -445,92 +214,6 @@ documentRouter.post("/setFeedbackAsModel/:id", async (req, res) => {
   const { isModel } = req.body;
   const updatedDocument = await InputPdf.findByIdAndUpdate(req.params.id, { isModel });
   return res.status(200).json({ msg: "Successfully set feedback as model", body: updatedDocument });
-});
-
-/**
- * Get strength and weakness of a single student under teacher (class and student name fields mandatory),
- * sorted by when the assignment is added to the database (newest first).
- * If strength and weakness not set, calls OpenAI to set it.
- */
-documentRouter.post("/student-strengths", async (req, res) => {
-  const uid = req.user.uid;
-  const className = req.query.className;
-  const studentName = req.query.studentName;
-
-  if (!className || !studentName) {
-    return res.status(400).json({ msg: "Missing student or class information" });
-  }
-
-  const filteredData = [];
-
-  const data = await InputPdf.find({
-    className,
-    studentName,
-    userId: uid,
-  }).sort({ createdAt: -1 }); // sort by when entry is created, newest to oldest
-
-  logger.info(`Found ${data.length} documents for student ${studentName} in class ${className}`);
-
-  // Count how many documents are still processing
-  const processingCount = data.filter((doc) => doc.processState === "processing").length;
-
-  let pendingAnalysis = 0;
-
-  // Use for...of to properly handle async operations
-  for (const essay of data) {
-    if (
-      essay.strengthsAndWeaknesses.strongAreas.length == 0 &&
-      essay.strengthsAndWeaknesses.weakAreas.length == 0 &&
-      essay.strengthsAndWeaknesses.mostCommonMistakes.length == 0
-    ) {
-      pendingAnalysis++;
-      logger.info(`Processing strengths/weaknesses for legacy student document: ${essay._id}`);
-      try {
-        const newStrAndWk = await classifyStrengthAndWeakness(
-          JSON.stringify({ processedOutputAI: essay.processedOutputAI })
-        );
-        const updatedEssay = await InputPdf.findByIdAndUpdate(
-          essay._id,
-          { strengthsAndWeaknesses: JSON.parse(newStrAndWk) },
-          { new: true }
-        );
-        essay.strengthsAndWeaknesses = updatedEssay.strengthsAndWeaknesses;
-      } catch (error) {
-        logger.error(error);
-      }
-    }
-
-    const filteredFields = {
-      pointSystem: essay.pointSystem,
-      essayType: essay.essayType,
-      scores: essay.processedOutputAI.slice(0, 3), //total score, content score, language score
-      className: essay.className,
-      essayName: essay.essayName,
-      studentName: essay.studentName,
-      strengthsAndWeaknesses: essay.strengthsAndWeaknesses,
-      processState: essay.processState, // Include process state for frontend use
-    };
-    filteredData.push(filteredFields);
-  }
-
-  if (pendingAnalysis > 0) {
-    logger.info(`Analyzed ${pendingAnalysis} legacy student documents on-demand`);
-  }
-
-  // Create processing status object
-  const processingStatus = {
-    isProcessing: processingCount > 0,
-    processingCount: processingCount,
-    totalCount: data.length,
-    completionPercentage:
-      data.length > 0 ? Math.round(((data.length - processingCount) / data.length) * 100) : 100,
-  };
-
-  return res.status(200).json({
-    msg: "Found student's documents.",
-    data: filteredData,
-    processingStatus: processingStatus,
-  });
 });
 
 /**
@@ -770,35 +453,6 @@ documentRouter.post("/:id/userAnnotation", async (req, res) => {
   await document.save();
 
   return res.status(201).json({ success: true, annotation: newAnnotation });
-});
-
-/**
- * Delete a user annotation by index
- */
-documentRouter.delete("/:id/userAnnotation/:index", async (req, res) => {
-  const documentId = req.params.id;
-  const index = parseInt(req.params.index);
-
-  // Validate index
-  if (isNaN(index)) {
-    return res.status(400).json({ success: false, message: "Index must be a number" });
-  }
-
-  // Update document atomically - no version conflict
-  const result = await InputPdf.findByIdAndUpdate(
-    documentId,
-    { $pull: { userAnnotations: { index: index } } },
-    { new: true }
-  );
-
-  if (!result) {
-    return res.status(404).json({ success: false, message: "Document not found" });
-  }
-
-  return res.status(200).json({
-    success: true,
-    message: `User annotation with index ${index} deleted successfully`,
-  });
 });
 
 documentRouter.post("/:id", async (req, res) => {

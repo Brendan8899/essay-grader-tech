@@ -1,19 +1,18 @@
 const { checkEssayError, removeDuplicateError } = require("./ErrorCheckerPrompt.js");
 const { getEssayImprovements } = require("./ImprovementPrompt.js");
-const { mapFeedbackToOcrPositions } = require("./MappingErrorsPrompt.js");
-const logger = require("../../utils/logger.js")("PromptChainingLogic");
-const fs = require("fs");
-const path = require("path");
+const { generateMappingPrompt } = require("./MappingErrorsPrompt.js");
 
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const OpenAI = require("openai");
 const openai = new OpenAI({ apiKey: openaiApiKey });
 
 /**
- * Clean the JSON string and extract only the content inside ```json ... ``` code blocks.
- * If no code blocks are found, try to clean the string directly.
- * @param {String} jsonString The string to be cleaned, which may or may not be wrapped in markdown code blocks
- * @returns {String} The cleaned JSON string that can be directly parsed by JSON.parse
+ * Extracts and cleans JSON content from a string that may contain markdown code blocks.
+ * If the input contains a ```json ... ``` block, returns only the JSON inside that block.
+ * Otherwise, trims whitespace and removes trailing commas before closing braces/brackets.
+ *
+ * @param {string} jsonString - The input string possibly containing JSON with or without markdown code blocks.
+ * @returns {string} - A cleaned JSON string suitable for parsing with JSON.parse.
  */
 function cleanJsonString(jsonString) {
   const jsonBlockMatch = jsonString.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
@@ -22,9 +21,9 @@ function cleanJsonString(jsonString) {
   } else {
     return jsonString
       .trim()
-      .replace(/^(?:\s*\n)+/, "") // remove all leading blank lines
-      .replace(/(?:\n\s*)+$/, "") // remove all trailing blank lines
-      .replace(/,\s*([}\]])/g, "$1"); // remove any trailing commas before } or ]
+      .replace(/^(?:\s*\n)+/, "") // Remove leading empty lines
+      .replace(/(?:\n\s*)+$/, "") // Remove trailing empty lines
+      .replace(/,\s*([}\]])/g, "$1"); // Remove trailing commas before } or ]
   }
 }
 
@@ -32,8 +31,7 @@ async function _runPrompt(prompt) {
   const GoogleGenAI = await import("@google/genai").then((pack) => pack.GoogleGenAI);
   const geminiAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_GEMINI_API_KEY });
   const modelConfig = {
-    model: "gemini-2.5-pro-preview-05-06",
-    temperature: 0.1,
+    model: "gemini-2.5-pro-preview-05-06"
   };
 
   try {
@@ -45,12 +43,12 @@ async function _runPrompt(prompt) {
         temperature: modelConfig.temperature,
       },
     });
-    logger.info(
+    console.info(
       `One step done, this step used tokens: ${response?.usageMetadata?.totalTokenCount || 0}`
     );
     return response.text;
   } catch (error) {
-    logger.warn(`Gemini failed, falling back to OpenAI: ${error.message}`);
+    console.warn(`Gemini failed, falling back to OpenAI: ${error.message}`);
   }
 
   const messages = [
@@ -85,56 +83,26 @@ async function getResponseFromAi(extractedText, descriptionGroup) {
     // Stage 1: error detection
     let cleanedError = await _runPrompt(errorPrompt);
     cleanedError = cleanJsonString(cleanedError);
-    storeAiLog("error", cleanedError);
 
     // Stage 2: deduplication
     let cleanedDedup = await _runPrompt(removeDuplicateError(extractedText, cleanedError));
-    cleanedDedup = cleanJsonString(cleanedDedup);
-    storeAiLog("dedup", cleanedDedup);
 
     // Stage 3: improvements
     let cleanedImp = await _runPrompt(getEssayImprovements(extractedText, cleanedDedup));
     cleanedImp = cleanJsonString(cleanedImp);
-    storeAiLog("improvement", cleanedImp);
 
     // stage 3.5: concat improvement and error
     const errorArray = JSON.parse(cleanedError);
     const improvementArray = JSON.parse(cleanedImp);
     const concatArray = [...errorArray, ...improvementArray];
     const concatString = JSON.stringify(concatArray);
-    storeAiLog("improvementAndError", concatString);
 
     // Stage 4: map feedback
-    const finalRaw = await _runPrompt(mapFeedbackToOcrPositions(concatString, descriptionGroup));
-    storeAiLog("mapping", finalRaw);
-    storeAiLog("extracted", extractedText);
-    storeAiLog("description", descriptionGroup);
+    const finalRaw = await _runPrompt(generateMappingPrompt(concatString, descriptionGroup));
     return cleanJsonString(finalRaw);
   } catch (err) {
-    logger.error("Both Gemini and OpenAI failed:", err);
+    console.error("Both Gemini and OpenAI failed:", err);
     return "";
-  }
-}
-
-/**
- * Stores AI response content into a log file with a timestamp.
- *
- * @param {string} stage - The stage name (e.g., "error", "dedup", "improvement", etc.).
- * @param {string} content - The content string to store.
- */
-function storeAiLog(stage, content) {
-  const logDir = path.join(__dirname, "../../C:/tmp/prompts");
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const filename = `${stage}_${timestamp}.log`;
-  const filepath = path.join(logDir, filename);
-
-  fs.mkdirSync(logDir, { recursive: true });
-
-  try {
-    fs.writeFileSync(filepath, content, "utf-8");
-    logger.info(`Logged ${stage} response to ${filename}`);
-  } catch (err) {
-    logger.error(`Failed to write ${stage} log:`, err.message);
   }
 }
 

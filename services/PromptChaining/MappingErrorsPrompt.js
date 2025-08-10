@@ -1,69 +1,67 @@
 // eslint-disable no-useless-escape
 /**
- * Builds a prompt to map identified errors to exact OCR lines and format them as structured JSON.
+ * Constructs a prompt instructing an AI to link detected errors to their exact positions within OCR text,
+ * returning the result as a structured JSON array in a markdown code block.
  *
- * @param {string} errorsAndImprovementsIdentified - JSON string of detected errors and improvements.
- * @param {string} inputData - OCR text with line numbers and original formatting.
- * @returns {string} A formatted prompt string for the AI to produce a mapped JSON output.
+ * @param {string} detectedIssuesJson - JSON string listing errors and suggested improvements.
+ * @param {string} ocrTextWithLines - The OCR output text, including line numbers and formatting.
+ * @returns {string} A prompt string formatted for an AI to produce a JSON mapping of errors to OCR text locations.
  */
-const mapFeedbackToOcrPositions = (errorsAndImprovementsIdentified, inputData) => {
+const generateMappingPrompt = (detectedIssuesJson, ocrTextWithLines) => {
   return `
-     You are an ALGORITHM in the middle of a processing pipeline. You will map identified errors to exact OCR text and output ONLY VALID JSON. RETURN a JSON array in a markdown code block
+    You are a processing module that links error data to precise OCR text locations. 
+    Your output must be strictly valid JSON formatted as a markdown code block.
 
-I'll provide you with:
-1. The original OCR text with line numbers
-2. JSON list of errors from previous steps
+    Input Provided:
+    1. The original OCR text with corresponding line numbers.
+    2. A JSON array containing identified errors and improvement suggestions.
 
-Your task:
-Convert each JSON entry to the new format by:
-1. Changing "feedback_type" to "error_type" (keeping the same value)
-2. Creating a "lines" array with line numbers and exact OCR words
-3. Map each "underline" text to the exact OCR text, don't include other unnecessary word, including all formatting as in the original.
-4. Keeping the original "feedback" content unchanged
+    Your task is to transform each error record as follows:
+    - Rename the property "feedback_type" to "error_type" while retaining its value.
+    - Create a "lines" array where each element includes:
+       - "line_number": the exact line number from the OCR.
+       - "words": an array of words and punctuation exactly as they appear on that line in the OCR, preserving spacing and formatting.
+    - Match each "underline" phrase precisely to the OCR text without adding or omitting words or formatting.
+    - Leave the original "feedback" text unchanged.
 
-Rules for mapping:
-- Use line numbers exactly as they appear in OCR text
-- The "words" array should contain each exact word/punctuation as in OCR
-- For errors spanning multiple lines, include multiple line objects
-- Preserve all OCR peculiarities (spaces, capitalization, etc.)
-- For improvement entries spanning multiple sentences, include all relevant lines
+    Mapping Requirements:
+    - Use line numbers exactly as shown in the OCR.
+    - The "words" array should reflect the exact sequence of tokens (words, punctuation, spacing) from the OCR text.
+    - For errors spanning multiple lines, include all relevant lines in order.
+    - Maintain all OCR formatting quirks, including capitalization, spacing, and punctuation.
+    - When improvements span multiple sentences or lines, include all pertinent lines.
 
-EXAMPLE JSON RESPONSE FORMAT WITH ESCAPED QUOTATION MARKS:
-[
-{
-    "error_type": "spelling", 
-    "lines":[
-       {
-       "line_number": 3,
-       "words":[
-           "Ones"
-       ]
-       }
-    ],
-   "feedback": "Once"  
-},
-{
-     "error_type": "punctuation", 
-     "lines":[
-        {
-        "line_number": 4,
-        "words":[ 
-            "sign",
-            "\\"",
-            "No"
-        ]
-        }
-     ],
-    "feedback": "sign, \\"No"  
-}
-]
+    EXAMPLE OF EXPECTED JSON FORMAT (with escaped quotes):
 
-Original OCR text:
-${inputData}
+    [
+      {
+        "error_type": "spelling",
+        "lines": [
+          {
+            "line_number": 3,
+            "words": ["Ones"]
+          }
+        ],
+        "feedback": "Once"
+      },
+      {
+        "error_type": "punctuation",
+        "lines": [
+          {
+            "line_number": 4,
+            "words": ["sign", "\\\"", "No"]
+          }
+        ],
+        "feedback": "sign, \\\"No"
+      }
+    ]
 
-Errors and improvements identified:
-${errorsAndImprovementsIdentified}
-`;
+    OCR Text Provided:
+    ${ocrTextWithLines}
+
+    Errors and improvements detected:
+    ${detectedIssuesJson}
+  `;
 };
 
-module.exports = { mapFeedbackToOcrPositions };
+module.exports = { generateMappingPrompt };

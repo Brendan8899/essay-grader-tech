@@ -1,6 +1,5 @@
 const express = require("express");
 const multer = require("multer");
-const logger = require("../utils/logger.js")("PdfSplitRouter");
 const fs = require("fs-extra");
 const pdf = require("pdf-parse");
 const { fromPath } = require("pdf2pic");
@@ -99,7 +98,7 @@ pdfSplitRouter.post("/splitPDFdownload", async (req, res, next) => {
   // create the archive and pipe to the response
   const archive = archiver("zip", { zlib: { level: 9 } });
   archive.on("error", next);
-  archive.on("close", () => fs.emptyDir(tempDirPath).catch(logger.error));
+  archive.on("close", () => fs.emptyDir(tempDirPath).catch(console.error));
   archive.pipe(res);
 
   // append each PDF file
@@ -108,16 +107,6 @@ pdfSplitRouter.post("/splitPDFdownload", async (req, res, next) => {
   });
 
   await archive.finalize();
-});
-
-pdfSplitRouter.delete("/", async (req, res) => {
-  const folderName = req.body?.folderName;
-  if (!folderName) {
-    return res.status(400).json({ error: "Empty folder name." });
-  }
-
-  fs.remove(folderName).catch(logger.error);
-  return res.status(201).send();
 });
 
 pdfSplitRouter.post("/splitPDFBytes", async (req, res) => {
@@ -133,14 +122,14 @@ pdfSplitRouter.post("/splitPDFBytes", async (req, res) => {
     req.user.uid
   );
 
-  fs.emptyDir(tempDirPath).catch(logger.error);
+  fs.emptyDir(tempDirPath).catch(console.error);
 
   const pdfs = pdfBytes.map((bytes, idx) => ({
     name: `split_document_${idx + 1}.pdf`,
     data: Buffer.from(bytes).toString("base64"),
   }));
 
-  fs.emptyDir(folderName).catch(logger.error);
+  fs.emptyDir(folderName).catch(console.error);
 
   return res.status(200).json(pdfs);
 });

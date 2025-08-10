@@ -1,5 +1,4 @@
 const { Student } = require("../mongoDB_schema");
-const logger = require("../utils/logger.js")("StudentService");
 
 /**
  * Add a new student to the database
@@ -41,7 +40,7 @@ async function addStudent(userId, studentName, className) {
       student: savedStudent,
     };
   } catch (error) {
-    logger.error("Error adding student:", error);
+    console.error("Error adding student:", error);
     throw error;
   }
 }
@@ -58,7 +57,7 @@ async function getStudentsByClass(userId, className) {
       .sort({ studentName: 1 }) // Sort alphabetically
       .lean(); // Convert to plain JavaScript objects
   } catch (error) {
-    logger.error("Error getting students by class:", error);
+    console.error("Error getting students by class:", error);
     throw error;
   }
 }
@@ -73,7 +72,7 @@ async function getClassesByTeacher(userId) {
     const classes = await Student.distinct("className", { userId });
     return classes;
   } catch (error) {
-    logger.error("Error getting classes by teacher:", error);
+    console.error("Error getting classes by teacher:", error);
     throw error;
   }
 }
@@ -103,145 +102,132 @@ async function deleteStudent(userId, studentId) {
       message: "Student deleted successfully",
     };
   } catch (error) {
-    logger.error("Error deleting student:", error);
+    console.error("Error deleting student:", error);
     throw error;
   }
 }
 
 /**
- * Compute similarity score between two strings
+ * Calculate the similarity between two strings based on Levenshtein distance.
+ * Returns a value between 0 (completely different) and 1 (identical).
+ * 
  * @param {string} str1 - First string to compare
  * @param {string} str2 - Second string to compare
  * @returns {number} - Similarity score between 0 and 1
  */
 function stringSimilarity(str1, str2) {
-  // Normalize strings for comparison
   const a = str1.toLowerCase().trim();
   const b = str2.toLowerCase().trim();
 
-  // If either string is empty, return 0
+  if (!a.length && !b.length) return 1;
   if (!a.length || !b.length) return 0;
-
-  // If strings are identical, return 1
   if (a === b) return 1;
 
-  // Check if one string contains the other
-  if (a.includes(b) || b.includes(a)) {
-    // Calculate containment score based on the ratio of the shorter string to the longer string
-    const shorter = a.length < b.length ? a : b;
-    const longer = a.length < b.length ? b : a;
-    return (shorter.length / longer.length) * 0.9; // Scale to 90% max for containment only
-  }
+  const distance = levenshteinDistance(a, b);
+  const maxLen = Math.max(a.length, b.length);
 
-  // Simple Levenshtein-inspired similarity score for more complex fuzzy matching
-  // Count matching characters
-  let matches = 0;
-  const minLength = Math.min(a.length, b.length);
+  return (maxLen - distance) / maxLen;
+}
 
-  // Check character matches position by position
-  for (let i = 0; i < minLength; i++) {
-    if (a[i] === b[i]) matches++;
-  }
+/**
+ * Compute Levenshtein distance between two strings.
+ * 
+ * @param {string} s1 
+ * @param {string} s2 
+ * @returns {number}
+ */
+function levenshteinDistance(s1, s2) {
+  const len1 = s1.length;
+  const len2 = s2.length;
+  const dp = Array.from({ length: len1 + 1 }, () => new Array(len2 + 1).fill(0));
 
-  // Split into words and check for word matches (better for names)
-  const aWords = a.split(/\s+/);
-  const bWords = b.split(/\s+/);
+  for (let i = 0; i <= len1; i++) dp[i][0] = i;
+  for (let j = 0; j <= len2; j++) dp[0][j] = j;
 
-  let wordMatches = 0;
-  for (const aWord of aWords) {
-    if (aWord.length < 2) continue; // Skip very short words
-
-    for (const bWord of bWords) {
-      if (bWord.length < 2) continue;
-
-      // Check for exact word match or significant partial match
-      if (
-        aWord === bWord ||
-        (aWord.length > 3 && bWord.length > 3 && (aWord.includes(bWord) || bWord.includes(aWord)))
-      ) {
-        wordMatches++;
-        break;
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      if (s1[i - 1] === s2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = Math.min(
+          dp[i - 1][j] + 1,    // deletion
+          dp[i][j - 1] + 1,    // insertion
+          dp[i - 1][j - 1] + 1 // substitution
+        );
       }
     }
   }
 
-  // Calculate final similarity score, giving higher weight to word matches
-  const charSimilarity = matches / Math.max(a.length, b.length);
-  const wordSimilarity = wordMatches / Math.max(aWords.length, bWords.length);
-
-  // Weighted combination - word matches are more important for names
-  return charSimilarity * 0.4 + wordSimilarity * 0.6;
+  return dp[len1][len2];
 }
 
+
 /**
- * Verify a student name against the database
- * @param {string} userId - Teacher's user ID
- * @param {string} studentName - Student name to verify
- * @param {string} className - Class name
- * @returns {Promise<Object>} - Verification result
+ * Attempts to confirm the identity of a student within a teacher's class records.
+ *
+ * @param {string} teacherId - The unique identifier of the teacher.
+ * @param {string} targetName - The student name to verify.
+ * @param {string} classGroup - The class or group name to search within.
+ * @returns {Promise<Object>} - An object summarizing verification results.
  */
-async function verifyStudentName(userId, studentName, className) {
+async function verifyStudentName(teacherId, targetName, classGroup) {
   try {
-    if (!studentName) {
+    // Return early if no student name is provided
+    if (!targetName) {
       return {
-        verified: false,
-        exactMatch: false,
-        message: "No student name provided",
-        similarMatches: [],
+        isVerified: false,
+        isExactMatch: false,
+        infoMessage: "Student name was not specified",
+        closeMatches: [],
       };
     }
 
-    // Check for exact match (case-insensitive)
-    const exactMatch = await Student.findOne({
-      userId,
-      className,
-      studentName: { $regex: new RegExp(`^${studentName}$`, "i") },
+    // Search for an exact match, ignoring case differences
+    const exactStudentRecord = await Student.findOne({
+      userId: teacherId,
+      className: classGroup,
+      studentName: { $regex: new RegExp(`^${targetName}$`, "i") },
     });
 
-    if (exactMatch) {
+    if (exactStudentRecord) {
       return {
-        verified: true,
-        exactMatch: true,
-        message: "Student name verified",
-        student: exactMatch,
-        similarMatches: [],
+        isVerified: true,
+        isExactMatch: true,
+        infoMessage: "Exact student name matched",
+        studentData: exactStudentRecord,
+        closeMatches: [],
       };
     }
 
-    // If no exact match, look for similar names
-    const allStudents = await Student.find({
-      userId,
-      className,
+    // If exact match not found, fetch all students in the class to find close matches
+    const studentsInClass = await Student.find({
+      userId: teacherId,
+      className: classGroup,
     });
 
-    // Filter and sort for similar matches using improved algorithm
-    const similarMatches = allStudents
+    // Evaluate similarity scores for each student name compared to the target name
+    const candidates = studentsInClass
       .map((student) => {
         const dbName = student.studentName;
-        const inputName = studentName;
+        const similarityValue = stringSimilarity(dbName, targetName);
 
-        // Calculate similarity score
-        const similarity = stringSimilarity(dbName, inputName);
-
-        // Add similarity score to student object
         return {
           ...student.toObject(),
-          similarityScore: similarity,
+          similarityScore: similarityValue,
         };
       })
-      .filter((student) => student.similarityScore > 0.5) // Only include reasonably similar matches (50%+)
-      .sort((a, b) => b.similarityScore - a.similarityScore); // Sort by similarity (highest first)
+      .filter((candidate) => candidate.similarityScore > 0.7) // Only consider candidates with high similarity
+      .sort((a, b) => b.similarityScore - a.similarityScore); // Sort descending by similarity score
 
     return {
-      verified: similarMatches.length > 0,
-      exactMatch: false,
-      message:
-        similarMatches.length > 0 ? "Similar student names found" : "No matching student found",
-      similarMatches,
+      isVerified: candidates.length > 0,
+      isExactMatch: false,
+      infoMessage: candidates.length > 0 ? "Potential name matches found" : "No similar student names detected",
+      closeMatches: candidates,
     };
-  } catch (error) {
-    logger.error("Error verifying student name:", error);
-    throw error;
+  } catch (err) {
+    console.error("Student name verification error:", err);
+    throw err;
   }
 }
 
@@ -290,7 +276,7 @@ async function updateStudent(userId, studentId, newName, className) {
       student: updatedStudent,
     };
   } catch (error) {
-    logger.error("Error updating student:", error);
+    console.error("Error updating student:", error);
     throw error;
   }
 }

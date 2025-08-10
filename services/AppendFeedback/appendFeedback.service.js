@@ -5,7 +5,6 @@ const { InputPdf, InputPdfCanvas } = require("../../mongoDB_schema.js");
 const { generateFeedback } = require("./generateFeedback.js");
 const { markdownToPdfBytes } = require("../../utils/markdownStringToPdf.js");
 const { PDFDocument } = require("pdf-lib");
-const logger = require("../../utils/logger.js")("AppendFeedbackService");
 const { createAnnotations } = require("./annotationGenerator.js");
 const archiver = require("archiver");
 
@@ -36,7 +35,7 @@ async function massAppendFeedback(documentIds, options, res) {
 
   archive.on("finish", () => {
     const sizeInBytes = archive.pointer();
-    logger.info(`ZIP size: ${sizeInBytes} bytes`);
+    console.info(`ZIP size: ${sizeInBytes} bytes`);
   });
 
   archive.finalize();
@@ -167,7 +166,7 @@ async function appendFeedbacktoDocument(markdownBytes, pdfBuffer) {
     const mergedBytes = await mergedPdf.save();
     return Buffer.from(mergedBytes);
   } catch (error) {
-    logger.error("Error in appeding feedback", error);
+    console.error("Error in appeding feedback", error);
     return pdfBuffer;
   }
 }

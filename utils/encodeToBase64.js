@@ -1,6 +1,5 @@
 const axios = require("axios");
 const fs = require("fs-extra");
-const logger = require("./logger.js")("encodeToBase64");
 const pdfParse = require("pdf-parse");
 const { convertDocxToPDF } = require("./convertToPdf");
 const { fromBuffer } = require("pdf2pic");
@@ -45,7 +44,7 @@ const imageToBase64 = (filePath) => {
 
     return base64String;
   } catch (error) {
-    logger.error(error);
+    console.error(error);
     return null;
   }
 };
@@ -56,7 +55,7 @@ const convertPdfToBase64Images = async (pdfBuffer) => {
     const { numpages } = await pdfParse(pdfBuffer);
     pageCount = numpages;
   } catch (err) {
-    logger.error(err);
+    console.error(err);
     return [];
   }
 
@@ -86,13 +85,13 @@ const convertPdfToBase64Images = async (pdfBuffer) => {
       try {
         fs.unlinkSync(r.path);
       } catch (unlinkErr) {
-        logger.error(unlinkErr);
+        console.error(unlinkErr);
       }
     }
 
     return base64Images;
   } catch (error) {
-    logger.error(error);
+    console.error(error);
     return [];
   }
 };
@@ -107,7 +106,7 @@ const convertDocToBase64ImageAndCache = async (file, questionID) => {
     }
     return base64ImageArray;
   } catch (error) {
-    logger.error(error);
+    console.error(error);
   }
 };
 
@@ -117,7 +116,7 @@ const convertDocToBase64Image = async (file) => {
     const base64Image = await convertPdfToBase64Images(pdfBuffer);
     return base64Image;
   } catch (error) {
-    logger.error(error);
+    console.error(error);
   }
 };
 
