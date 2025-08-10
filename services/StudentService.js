@@ -78,36 +78,6 @@ async function getClassesByTeacher(userId) {
 }
 
 /**
- * Delete a student
- * @param {string} userId - Teacher's user ID
- * @param {string} studentId - Student document ID
- * @returns {Promise<Object>} - Result of deletion
- */
-async function deleteStudent(userId, studentId) {
-  try {
-    const result = await Student.findOneAndDelete({
-      _id: studentId,
-      userId, // Ensure teacher can only delete their own students
-    });
-
-    if (!result) {
-      return {
-        success: false,
-        message: "Student not found or you don't have permission to delete",
-      };
-    }
-
-    return {
-      success: true,
-      message: "Student deleted successfully",
-    };
-  } catch (error) {
-    console.error("Error deleting student:", error);
-    throw error;
-  }
-}
-
-/**
  * Calculate the similarity between two strings based on Levenshtein distance.
  * Returns a value between 0 (completely different) and 1 (identical).
  * 
@@ -285,7 +255,6 @@ module.exports = {
   addStudent,
   getStudentsByClass,
   getClassesByTeacher,
-  deleteStudent,
   verifyStudentName,
   updateStudent,
 };

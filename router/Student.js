@@ -2,145 +2,97 @@ const express = require("express");
 const {
   addStudent,
   getStudentsByClass,
-  getClassesByTeacher,
-  deleteStudent,
   updateStudent,
 } = require("../services/StudentService");
 
 const studentRouter = express.Router();
 
-/**
- * Add a new student to a class
- */
-studentRouter.post("/", async (req, res) => {
-  const { studentName, className } = req.body;
-
-  if (!studentName || !className) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields: studentName, and className are required",
-    });
-  }
-
-  const result = await addStudent(req.user.uid, studentName, className);
-
-  if (!result.success) {
-    return res.status(409).json(result); // 409 Conflict
-  }
-
-  return res.status(201).json(result);
-});
-
-/**
- * Get students by class
- */
 studentRouter.get("/class", async (req, res) => {
   const { className } = req.query;
 
   if (!className) {
     return res.status(400).json({
       success: false,
-      message: "Missing required parameters: className is required",
+      message: "Parameter 'className' must be provided",
     });
   }
 
-  const students = await getStudentsByClass(req.user.uid, className);
+  try {
+    const studentList = await getStudentsByClass(req.user.uid, className);
 
-  return res.status(200).json({
-    success: true,
-    message: "Students retrieved successfully",
-    students,
-  });
-});
-
-/**
- * Get all classes for a teacher
- */
-studentRouter.get("/classes", async (req, res) => {
-  const classes = await getClassesByTeacher(req.user.uid);
-
-  return res.status(200).json({
-    success: true,
-    message: "Classes retrieved successfully",
-    classes,
-  });
-});
-
-/**
- * Delete a student
- */
-studentRouter.delete("/:studentId", async (req, res) => {
-  const { studentId } = req.params;
-
-  if (!studentId) {
-    return res.status(400).json({
+    return res.status(200).json({
+      success: true,
+      message: `Found ${studentList.length} student(s) for the given class`,
+      students: studentList,
+    });
+  } catch (err) {
+    console.error("Error fetching students for class:", err);
+    return res.status(500).json({
       success: false,
-      message: "Missing required parameters: studentId",
+      message: "Unable to retrieve students at this time",
     });
   }
-
-  const result = await deleteStudent(req.user.uid, studentId);
-
-  if (!result.success) {
-    return res.status(404).json(result);
-  }
-
-  return res.status(200).json(result);
 });
 
-/**
- * Batch add students
- */
 studentRouter.post("/batch", async (req, res) => {
   const { className, students } = req.body;
 
+  // Validate required inputs
   if (!className || !Array.isArray(students)) {
     return res.status(400).json({
       success: false,
-      message: "Missing required fields: className, and students array",
+      message: "Both className and a valid students array are required",
     });
   }
 
-  const results = [];
+  const processedResults = [];
 
-  for (const studentName of students) {
-    if (typeof studentName === "string" && studentName.trim()) {
-      const result = await addStudent(req.user.uid, studentName.trim(), className);
-      results.push({
-        studentName,
-        ...result,
+  for (const name of students) {
+    if (typeof name === "string" && name.trim().length > 0) {
+      const addOutcome = await addStudent(req.user.uid, name.trim(), className);
+      processedResults.push({
+        originalName: name,
+        ...addOutcome,
       });
     }
   }
 
   return res.status(201).json({
     success: true,
-    message: "Batch student addition completed",
-    results,
+    message: "All provided students have been processed",
+    results: processedResults,
   });
 });
 
 
-/**
- * Update a student's name
- */
+
 studentRouter.put("/", async (req, res) => {
   const { studentId, newName, className } = req.body;
 
   if (!studentId || !newName || !className) {
     return res.status(400).json({
       success: false,
-      message: "Missing required fields: studentId, newName, and className are required",
+      message: "Required information missing: studentId, newName, and className must be provided",
     });
   }
 
-  const result = await updateStudent(req.user.uid, studentId, newName, className);
+  try {
+    // Attempt student update
+    const updateOutcome = await updateStudent(req.user.uid, studentId, newName, className);
 
-  if (!result.success) {
-    return res.status(400).json(result);
+    if (!updateOutcome.success) {
+      return res.status(400).json(updateOutcome);
+    }
+
+    return res.status(200).json(updateOutcome);
+  } catch (err) {
+    console.error("Error updating student record:", err);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while updating the student",
+    });
   }
-
-  return res.status(200).json(result);
 });
+
 
 module.exports = studentRouter;

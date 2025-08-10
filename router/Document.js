@@ -10,9 +10,6 @@ const {
 const multer = require("multer");
 const { deleteFilePath } = require("../utils/utils");
 const { ObjectId } = require("mongodb");
-const {
-  appendFeedback,
-} = require("../services/AppendFeedback/appendFeedback.service.js");
 
 const documentRouter = express.Router();
 
@@ -101,14 +98,6 @@ documentRouter.get("/appendFeedbackPreferences", async (req, res) => {
   }
   const { _id, ...data } = userPreference.toObject();
   return res.status(200).send(data);
-});
-
-documentRouter.post("/appendFeedback", async (req, res) => {
-  const { documentId, options, includeError } = req.body;
-  const resultPdfBuffer = await appendFeedback(documentId, options, includeError);
-
-  res.type("application/pdf");
-  res.send(resultPdfBuffer);
 });
 
 documentRouter.post("/graded/:id", upload.single("file"), async (req, res) => {
@@ -298,18 +287,6 @@ documentRouter.get("/:id", async (req, res) => {
       prevEssayId: prevEssay?._id,
     },
     data: result,
-  });
-});
-
-/**
- * Get all students from a certain class under a teacher (class field mandatory)
- * @deprecated Use /api/students/class/:userId?className=... endpoint instead
- */
-documentRouter.get("/student-list/:uid", async (req, res) => {
-  // Return a 410 Gone status with information about the new endpoint
-  return res.status(410).json({
-    msg: "This endpoint is deprecated and has been removed. Please use /api/students/class/:userId?className=... instead",
-    redirectTo: `/api/students/class/${req.params.uid}?className=${encodeURIComponent(req.query.className || "")}`,
   });
 });
 
