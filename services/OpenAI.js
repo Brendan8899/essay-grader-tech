@@ -7,7 +7,6 @@ const openai = new OpenAI({
 });
 const { encodeToBase64 } = require("../utils/encodeToBase64");
 const textExtractionPrompt = require("./textExtractionPrompt");
-const { strengthAndWeaknessPrompt } = require("./strengthAndWeaknessPrompt");
 
 const getFormattedDate = () => {
   const date = new Date();
@@ -208,27 +207,6 @@ function processOutput(gptResponse) {
   return outputTuples;
 }
 
-async function classifyStrengthAndWeakness(feedback) {
-  const messages = [
-    {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: strengthAndWeaknessPrompt(feedback),
-        },
-      ],
-    },
-  ];
-  const res = await openai.chat.completions.create({
-    model: "chatgpt-4o-latest",
-    messages: messages,
-    max_completion_tokens: 16384,
-    response_format: { type: "json_object" },
-  });
-  return res.choices[0].message.content;
-}
-
 module.exports = {
   getFormattedDate,
   getAIResponseWithImages,
@@ -236,5 +214,4 @@ module.exports = {
   addErrors,
   getTextFromImages,
   getQuestionImagesFromStorage,
-  classifyStrengthAndWeakness,
 };

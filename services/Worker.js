@@ -16,7 +16,7 @@ const { updateAIResponseToDocument, updateDuplicatedDocument } = require("./Docu
 const {
   getAnnotation,
   getBoundingPolyVertices,
-  getBoundaryX,
+  computeXBounds,
   rearrangeText,
   generateDescriptionLines,
   parseJSONString,
@@ -176,7 +176,7 @@ myQueue.process(async (job) => {
   const checkerResponse = await getResponseFromAi(extractedText, descriptionGroupsStr, teacherStudentInteraction);
 
   const checkerResponseJSON = parseJSONString(checkerResponse, extractedText, pageTotalLines);
-  const boundary = getBoundaryX(coordinateMaps);
+  const boundary = computeXBounds(coordinateMaps);
   const annotationResult = getAnnotation(checkerResponseJSON, allSentences, coordinateMaps);
   const organizedAnnotations = organizeAnnotations(annotationResult);
 
@@ -354,7 +354,7 @@ myQueue.on("failed", async (job, err) => {
 });
 
 // Handle job completion
-myQueue.on("completed", async (job, result) => {
+myQueue.on("completed", async ( job ) => {
   const { userId, inputPdf } = job.data;
   redis.publish(
     "Document-Status",

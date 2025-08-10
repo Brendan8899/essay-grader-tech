@@ -4,7 +4,6 @@ const path = require("path");
 const { Storage } = require("@google-cloud/storage");
 const {
   searchConditionConstructor,
-  updateAnnotations,
 } = require("../services/Document.service");
 const multer = require("multer");
 const { deleteFilePath } = require("../utils/utils");
@@ -53,28 +52,6 @@ documentRouter.post("/list", async (req, res) => {
     },
     data: documents,
   });
-});
-
-/**
- * Get all document IDs for the current user with optional filtering
- * This is used for sequential navigation between documents across pages
- */
-documentRouter.post("/allIds", async (req, res) => {
-  const { filter = {} } = req.body || {};
-
-  let searchConditions = searchConditionConstructor(req.user.uid, filter);
-
-  // Only select the _id field
-  const documentIds = await InputPdf.find(searchConditions)
-    .sort({ createdAt: -1 })
-    .select("_id")
-    .lean()
-    .exec();
-
-  // Extract just the IDs as an array
-  const idArray = documentIds.map((doc) => doc._id.toString());
-
-  return res.status(200).json({ msg: "ok", body: idArray });
 });
 
 documentRouter.post("/appendFeedbackPreferences", async (req, res) => {
@@ -154,14 +131,6 @@ documentRouter.delete("/:id", async (req, res) => {
   return res.status(200).json({ message: "Item deleted" });
 });
 
-
-documentRouter.get("/files/:filename", (req, res, next) => {
-  const filename = req.params.filename;
-  const filePath = path.join("C:/tmp", filename);
-
-  return res.sendFile(filePath, next);
-});
-
 documentRouter.patch("/update", async (req, res) => {
   const { documentId, contentScore, languageScore } = req.body;
 
@@ -195,21 +164,6 @@ documentRouter.patch("/update", async (req, res) => {
   );
 
   return res.status(200).json({ msg: "Document updated successfully", body: updatedDocument });
-});
-
-/**
- * Get all assigment names under a teacher
- */
-documentRouter.get("/assignment-list", async (req, res) => {
-  const className = req.query.className;
-  const docs = await InputPdf.find({
-    userId: req.user.uid,
-    ...(className && { className }),
-  });
-  const assignments = new Set(docs.map((doc) => doc.essayName));
-  return res
-    .status(200)
-    .json({ msg: "Found list of classes.", assignments: Array.from(assignments) });
 });
 
 documentRouter.get("/:id", async (req, res) => {
@@ -270,125 +224,6 @@ documentRouter.get("/:id", async (req, res) => {
     },
     data: result,
   });
-});
-
-documentRouter.put("/update-annotations/:id", async (req, res) => {
-  const { id } = req.params;
-  const { type, index, feedback } = req.body;
-
-  await updateAnnotations(id, type, index, feedback);
-
-  return res.status(200).json({
-    success: true,
-    message: `Annotations updated successfully!`,
-  });
-});
-
-// Route to delete annotations by uniqueId
-documentRouter.delete("/delete-annotations/:id", async (req, res) => {
-  const { id } = req.params;
-  const { annotationType, uniqueIds } = req.body;
-
-  if (!annotationType || !Array.isArray(uniqueIds) || uniqueIds.length === 0) {
-    return res.status(400).json({
-      message: "Invalid request. Must provide annotationType and an array of uniqueIds",
-    });
-  }
-
-  // Find the document first
-  const document = await InputPdf.findById(id);
-  if (!document) {
-    return res.status(404).json({ message: "Document not found" });
-  }
-
-  // Check if the document has annotations
-  if (!document.annotations || !document.annotations[annotationType]) {
-    return res.status(404).json({ message: `No annotations of type ${annotationType} found` });
-  }
-
-  // Instead of filtering out annotations, mark them as deleted
-  document.annotations[annotationType].forEach((annotation) => {
-    if (uniqueIds.includes(annotation.uniqueId)) {
-      annotation.deleted = true;
-    }
-  });
-
-  // Update the document with the filtered annotations
-  const updateQuery = {
-    [`annotations.${annotationType}`]: document.annotations[annotationType],
-  };
-
-  const updatedDocument = await InputPdf.findByIdAndUpdate(id, updateQuery, { new: true });
-
-  // Now we need to regenerate the SVG with the updated annotations
-  // This would typically involve calling the same process that generates the SVG during initial processing
-  // For now, we'll just return success and the updated document
-
-  return res.status(200).json({
-    message: `Successfully deleted ${uniqueIds.length} annotations`,
-    document: updatedDocument,
-  });
-});
-
-/**
- * Add a user annotation to a document
- */
-documentRouter.post("/:id/userAnnotation", async (req, res) => {
-  const documentId = req.params.id;
-  const { errorType, index, feedback, page, firstWordCoordinates, lastWordCoordinates } = req.body;
-
-  // Validate required fields
-  if (!errorType || index === undefined || !feedback) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields: errorType, index, and feedback are required",
-    });
-  }
-
-  // Validate errorType is one of the allowed values
-  const allowedErrorTypes = ["spelling_and_handwriting", "grammar", "punctuation", "improvement"];
-  if (!allowedErrorTypes.includes(errorType)) {
-    return res.status(400).json({
-      success: false,
-      message: `Invalid errorType. Must be one of: ${allowedErrorTypes.join(", ")}`,
-    });
-  }
-
-  // Find the document
-  const document = await InputPdf.findById(documentId);
-  if (!document) {
-    return res.status(404).json({ success: false, message: "Document not found" });
-  }
-
-  // Check if the index is already used in userAnnotations
-  if (document.userAnnotations && document.userAnnotations.some((a) => a.index === index)) {
-    return res.status(400).json({
-      success: false,
-      message: `Index ${index} is already in use in userAnnotations`,
-    });
-  }
-
-  // Create the new annotation to add to db
-  const newAnnotation = {
-    errorType,
-    index,
-    feedback,
-    page,
-    firstWordCoordinates,
-    lastWordCoordinates,
-    createdAt: new Date(),
-  };
-
-  // Initialize userAnnotations array if it doesn't exist
-  if (!document.userAnnotations) {
-    document.userAnnotations = [];
-  }
-
-  // Add the annotation
-  document.userAnnotations.push(newAnnotation);
-  await document.save();
-
-  return res.status(201).json({ success: true, annotation: newAnnotation });
 });
 
 documentRouter.post("/:id", async (req, res) => {

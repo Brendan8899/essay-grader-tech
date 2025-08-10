@@ -90,105 +90,81 @@ function getBoundingPolyVertices(result) {
 }
 
 /**
- * Calculates the minimum and maximum x-coordinates from a 3D array of vertices.
+ * Computes the minimum and maximum x-coordinates from a 3D array of vertex objects.
  *
- * @param {Array<Array<Array<{x: number, y: number}>>>} coordinatesMap - A 3D array representing lines of words,
- * each word being an array of vertex objects with x and y properties.
- * @returns {[number, number]} An array containing the minimum and maximum x-coordinates.
+ * @param {Array<Array<Array<{x: number, y: number}>>>} coords3D - Nested array of lines, words, and vertices.
+ * @returns {[number, number]} Array with [minX, maxX].
  */
-function getBoundaryX(coordinatesMap) {
-  const xs = coordinatesMap.flatMap((line) => line.flatMap((vertice) => vertice.map((v) => v.x)));
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
+function computeXBounds(coords3D) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+
+  for (const line of coords3D) {
+    for (const word of line) {
+      for (const vertex of word) {
+        if (vertex.x < minX) minX = vertex.x;
+        if (vertex.x > maxX) maxX = vertex.x;
+      }
+    }
+  }
+
   return [minX, maxX];
 }
 
-/**
- * @typedef {Array<[{x: number, y: number}, {x: number, y: number}, {x: number, y: number}, {x: number, y: number}]>} vertices
- * Groups OCR word boxes into lines based on vertical alignment and sorts them left to right.
- * This function uses adaptive thresholding based on word height and median line gap.
- * @param {Array<[{x: number, y: number}, {x: number, y: number}, {x: number, y: number}, {x: number, y: number}, {description: string}]>} processingArray -
- * Array of OCR word boxes with four bounding vertices and a description.
- * @returns {[string[][], vertices[][]]} A 2D array where each sub-array is a line of text (words in reading order).
- */
 function rearrangeText(processingArray) {
-  const IGNORE_EDGE_LINES = 4; // trim header or footer noise
-  const GAP_FACTOR = 0.4;
-  const words = preprocess(processingArray);
-  const LINE_THRESHOLD = median(words.map((w) => w.height));
+  let three_d_Array = [];
+  const coordinate_map = new Map();
 
-  // Pass 1 – roughly bucket centre-Ys to figure out overall line spacing
-  words.sort((a, b) => a.centerY - b.centerY);
+  processingArray.sort((a, b) => a[0].y - b[0].y);
 
-  const roughLines = [];
-  for (const w of words) {
-    const last = roughLines[roughLines.length - 1];
-    if (last && Math.abs(last.avgY - w.centerY) <= LINE_THRESHOLD) {
-      last.totalY += w.centerY;
-      last.count += 1;
-      last.avgY = last.totalY / last.count;
+  let currentGroup = [];
+  for (let i = 0; i < processingArray.length; i++) {
+    if (currentGroup.length === 0) {
+      currentGroup.push([processingArray[i]]);
     } else {
-      roughLines.push({ totalY: w.centerY, count: 1, avgY: w.centerY });
+      // Check the y difference between the current item and the previous item in the group
+      const firstItemInGroup = currentGroup[currentGroup.length - 1];
+      if (
+        Math.abs(processingArray[i][0].y + processingArray[i][2].y) / 2 -
+          Math.abs(firstItemInGroup[0][0].y + firstItemInGroup[0][2].y) / 2 <=
+        13
+      ) {
+        currentGroup.push([processingArray[i]]);
+      } else {
+        // Otherwise, push the current group to the three_d_Array and start a new group
+        three_d_Array.push(currentGroup);
+        currentGroup = [[processingArray[i]]]; // Start a new group with the current item
+      }
     }
   }
 
-  // Calculate a *robust* (median) gap across the middle of the page
-  const usableYs = roughLines
-    .slice(IGNORE_EDGE_LINES, -IGNORE_EDGE_LINES || undefined)
-    .map((l) => l.avgY);
-
-  const roughGaps = usableYs.slice(1).map((y, i) => y - usableYs[i]);
-  const medianGap = roughGaps.length ? median(roughGaps) : LINE_THRESHOLD * 2;
-
-  // Helper → line-membership tolerance adapts to word height
-  const tolerance = (h) => Math.max(h, medianGap * GAP_FACTOR);
-
-  // Pass 2 – final, using adaptive tolerance
-  const finalLines = [];
-  for (const w of words) {
-    const last = finalLines[finalLines.length - 1];
-    if (last && Math.abs(last.avgY - w.centerY) <= tolerance(w.height)) {
-      last.words.push(w);
-      last.avgY = (last.avgY * (last.words.length - 1) + w.centerY) / last.words.length;
-    } else {
-      finalLines.push({ avgY: w.centerY, words: [w] });
-    }
+  //Push the last group if it's not empty
+  if (currentGroup.length > 0) {
+    three_d_Array.push(currentGroup);
   }
 
-  const sentences = finalLines.map((line) =>
-    line.words.sort((a, b) => a.minX - b.minX).map((w) => w.description)
+  three_d_Array.forEach((group) => group.sort((a, b) => a[0][0].x - b[0][0].x));
+
+  const descriptionGroups = three_d_Array.map((group) =>
+    group.map((array) => array[0].find((word) => word.description)?.description)
   );
-  const coordinatesMap = finalLines.map((line) =>
-    line.words.sort((a, b) => a.minX - b.minX).map((w) => w.coordinates)
-  );
 
-  return [sentences, coordinatesMap];
-}
+  for (let i = 0; i < three_d_Array.length; i++) {
+    for (let j = 0; j < three_d_Array[i].length; j++) {
+      const wordArray = three_d_Array[i][j];
 
-function median(values) {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
+      const vertices = [];
 
-/**
- *
- * @param {Array<[ {x: number, y: number}, {x: number, y: number}, {x: number, y: number}, {x: number, y: number}, {description: string} ]>} processingArray
- * @returns
- */
-function preprocess(processingArray) {
-  return processingArray.map((word) => {
-    const ys = word.slice(0, 4).map((p) => p.y);
-    const xs = word.slice(0, 4).map((p) => p.x);
-    return {
-      centerY: (Math.min(...ys) + Math.max(...ys)) / 2,
-      minX: Math.min(...xs),
-      height: Math.max(...ys) - Math.min(...ys),
-      description: word[4].description,
-      coordinates: word.slice(0, 4),
-    };
-  });
+      for (let k = 0; k < 4; k++) {
+        const vertex = wordArray[0][k];
+        vertices.push({ x: vertex.x, y: vertex.y });
+      }
+
+      // Store the vertices in the map using (i, j) as the key
+      coordinate_map.set(JSON.stringify([i, j]), vertices);
+    }
+  }
+  return [descriptionGroups, coordinate_map];
 }
 
 /**
@@ -328,7 +304,7 @@ function levenshteinDistance(a, b) {
 module.exports = {
   getAnnotation,
   getBoundingPolyVertices,
-  getBoundaryX,
+  computeXBounds,
   rearrangeText,
   generateDescriptionLines,
   findLineInPage,

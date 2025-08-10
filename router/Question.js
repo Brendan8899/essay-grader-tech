@@ -184,7 +184,6 @@ const getFormattedDate = () => {
   return date.toISOString().replace(/:/g, "-").replace(/\..+/, "");
 };
 
-// handling jobs
 myQueue.process(async (job) => {
   console.info(`⚙️ Processing job ${job.id}`);
   // handling file directories

@@ -81,7 +81,7 @@ Complete student name only:`;
   const response = await openai.chat.completions.create({
     model: "chatgpt-4o-latest",
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.3,
+    temperature: 0.1,
     max_tokens: 50,
   });
 
