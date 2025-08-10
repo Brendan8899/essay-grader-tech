@@ -10,6 +10,7 @@ const { imageToBase64 } = require("../utils/encodeToBase64.js");
 const { Storage } = require("@google-cloud/storage");
 const vision = require("@google-cloud/vision");
 const { getResponseFromAi } = require("./PromptChaining/PromptChainingLogic.js");
+const { organizeAnnotations } = require('./Document.service.js')
 
 const { updateAIResponseToDocument, updateDuplicatedDocument } = require("./Document.service.js");
 const {
@@ -25,6 +26,12 @@ const {
   getTextFromImages,
   getQuestionImagesFromStorage,
 } = require("./OpenAI.js");
+
+const {
+  retrieveStudentTeacherInteraction,
+  createStudentTeacherInteraction,
+} = require("./teacherStudentInteraction.js");
+
 const { InputPdf } = require("../mongoDB_schema.js");
 const mongoose = require("mongoose");
 const { DOCUMENT } = require("../config");
@@ -67,7 +74,7 @@ async function connect() {
 connect();
 
 myQueue.process(async (job) => {
-  const { file, inputPdf, userId, questionChoice } = job.data;
+  const { file, inputPdf, userId, questionChoice, studentId } = job.data;
 
   const timestamp = getFormattedDate();
   const folderName = `output_${userId}_${timestamp}`;
@@ -147,6 +154,12 @@ myQueue.process(async (job) => {
   const pageTotalLines = [];
   const allSentences = [];
 
+  let teacherStudentInteraction;
+
+  if (studentId) {
+    teacherStudentInteraction = await retrieveStudentTeacherInteraction(userId, studentId);
+  }
+
   for (const imageFile of imageFiles) {
     const imagePath = path.join(imagesPath, imageFile);
     const [results] = await googleVisionClient.documentTextDetection(imagePath);
@@ -160,11 +173,22 @@ myQueue.process(async (job) => {
   }
 
   const descriptionGroupsStr = generateDescriptionLines(allSentences);
-  const checkerResponse = await getResponseFromAi(extractedText, descriptionGroupsStr);
+  const checkerResponse = await getResponseFromAi(extractedText, descriptionGroupsStr, teacherStudentInteraction);
 
   const checkerResponseJSON = parseJSONString(checkerResponse, extractedText, pageTotalLines);
   const boundary = getBoundaryX(coordinateMaps);
   const annotationResult = getAnnotation(checkerResponseJSON, allSentences, coordinateMaps);
+  const organizedAnnotations = organizeAnnotations(annotationResult);
+
+  if (studentId) {
+    await createStudentTeacherInteraction(
+      userId,
+      studentId,
+      organizedAnnotations,
+      inputPdf._id.toString()
+    );
+  }
+
   // Create object to store the original image
   // Create an empty canvas with width of a single page and height of all pages combined
   const pageHeight = options.height;

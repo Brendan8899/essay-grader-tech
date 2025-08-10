@@ -47,7 +47,6 @@ const masterPromptTemplate = (
       * Essay type: ${essayType || "Narrative"} (Indicates the style or genre expected)
       * Awarded points: ${awardPoints.length > 0 ? awardPoints.join(", ") : "None"} (Extra points may be given for strong performance in these areas)
       * Custom instructions: ${customInstructions || "None"} (Any special grading instructions provided)
-      * Use the "MARK SCHEME FOR CONTINUOUS WRITING" as the primary rubric reference.
       * Consider fluency and error-free writing for awarding higher marks.
       * Adjust expectations based on the student's grade level (be lenient with younger students).
 

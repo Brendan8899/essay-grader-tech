@@ -91,6 +91,25 @@ async function createDocument(data, filename) {
   return newInputPDF;
 }
 
+function organizeAnnotations(annotations) {
+  const organizedAnnotations = KEY_ERROR_TYPES.reduce((acc, type) => {
+    acc[type] = [];
+    return acc;
+  }, {});
+
+  if (Array.isArray(annotations)) {
+    annotations.forEach((error, index) => {
+      const annotation = normalizeError(error, index);
+      const group = getAnnotationGroup(annotation.error_type);
+      if (group && organizedAnnotations[group]) {
+        organizedAnnotations[group].push(annotation);
+      }
+    });
+  }
+
+  return organizedAnnotations;
+}
+
 async function updateAIResponseToDocument(inputPdf, data, file, errors, boundary) {
   let processedOutput = [];
   if (data !== "") {
@@ -365,4 +384,5 @@ module.exports = {
   createDocumentWithVerification,
   updateStudentNameAfterReview,
   updateAnnotations,
+  organizeAnnotations
 };

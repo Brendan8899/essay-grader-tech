@@ -63,21 +63,6 @@ async function getStudentsByClass(userId, className) {
 }
 
 /**
- * Get all classes for a teacher
- * @param {string} userId - Teacher's user ID
- * @returns {Promise<Array>} - List of class names
- */
-async function getClassesByTeacher(userId) {
-  try {
-    const classes = await Student.distinct("className", { userId });
-    return classes;
-  } catch (error) {
-    console.error("Error getting classes by teacher:", error);
-    throw error;
-  }
-}
-
-/**
  * Calculate the similarity between two strings based on Levenshtein distance.
  * Returns a value between 0 (completely different) and 1 (identical).
  * 
@@ -254,7 +239,6 @@ async function updateStudent(userId, studentId, newName, className) {
 module.exports = {
   addStudent,
   getStudentsByClass,
-  getClassesByTeacher,
   verifyStudentName,
-  updateStudent,
+  updateStudent
 };

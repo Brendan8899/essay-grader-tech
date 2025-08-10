@@ -43,9 +43,6 @@ async function _runPrompt(prompt) {
         temperature: modelConfig.temperature,
       },
     });
-    console.info(
-      `One step done, this step used tokens: ${response?.usageMetadata?.totalTokenCount || 0}`
-    );
     return response.text;
   } catch (error) {
     console.warn(`Gemini failed, falling back to OpenAI: ${error.message}`);
@@ -74,10 +71,10 @@ async function _runPrompt(prompt) {
  * @param {string} descriptionGroup - The OCR-formatted data for LLM to map back the error
  * @returns {Promise<string>} - The final JSON string that can be parsed by JSON.parse
  */
-async function getResponseFromAi(extractedText, descriptionGroup) {
+async function getResponseFromAi(extractedText, descriptionGroup, teacherStudentInteraction) {
   // Prepare prompts
   extractedText = extractedText.replace(/ {2,}/g, " ");
-  const errorPrompt = checkEssayError(extractedText);
+  const errorPrompt = checkEssayError(extractedText,  teacherStudentInteraction);
 
   try {
     // Stage 1: error detection

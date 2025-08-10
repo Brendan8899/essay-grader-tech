@@ -1,12 +1,8 @@
-// eslint-disable no-useless-escape
-/**
- *
- * @param {any} extractedText The essay text to be checked for errors.
- * @returns {string} A JSON string wrapped in a markdown code block listing all detected errors.
- */
-const checkEssayError = (extractedText) => {
+const checkEssayError = (extractedText, teacherStudentInteraction) => {
   return `
 Act as a highly skilled English teacher carefully reviewing this AI-transcribed handwritten essay. Identify all errors, including subtle ones often missed, while accounting for possible spacing or line break issues from AI transcription. Use UK English spelling conventions only.
+
+You are also provided with previous teacher-student interactions, including past mistakes and feedback, to help you avoid repeating known errors and focus on new or unresolved issues.
 
 Error categories (use these exact lowercase values):
 - "spelling": Incorrectly spelled words
@@ -44,22 +40,27 @@ Example error entries:
 
 Guidelines:
 - Use essay context to determine if something is an error; some words are errors only in context.
-- Ignore crossed-out words (like ~~word~~); treat them as if absent.
-- Focus solely on errors; do not provide positive feedback.
+- Crossed-out words (like ~~word~~) should be ignored as if not present.
+- Focus only on errors; do not provide positive or general feedback.
 - Identify every error, no matter how small.
 - Escape all quotation marks inside word arrays with backslashes: \\"example\\".
 - Always use lowercase for feedback_type.
-- Ensure no spelling, grammar, or punctuation errors are missed.
-- Return only the JSON array inside a markdown code block; no extra text.
+- Make sure no spelling, grammar, or punctuation errors are missed.
+- Consider previous teacher-student interactions to avoid repeating feedback on the same mistakes.
+- Return only the JSON array inside a markdown code block; do not include any extra text.
 
 Notes:
 - Refer to full stops as “full stop,” not “period” or “dot.”
-- Do not give feedback on spacing before/after commas due to handwriting variability.
+- Do not comment on spacing around commas due to handwriting variations.
+
+Previous teacher-student feedback and past mistakes:
+${teacherStudentInteraction}
 
 Essay:
 ${extractedText}
   `;
 };
+
 
 /**
  * Creates a prompt to validate and remove duplicate or incorrect feedback based on the original essay.
