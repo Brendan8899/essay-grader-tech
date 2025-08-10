@@ -30,7 +30,7 @@ const upload = multer({ dest: "/tmp/question" });
 
 // Initialize Google Cloud Storage
 const storage = new Storage({
-  keyFilename: "lenor-ai-google-storage.json",
+  keyFilename: "google-storage.json",
 });
 
 const bucketName = "lenor-bucket";

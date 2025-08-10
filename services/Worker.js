@@ -43,7 +43,7 @@ const getFormattedDate = () => {
 
 // Initialize Google Cloud Storage
 const storage = new Storage({
-  keyFilename: "lenor-ai-google-storage.json",
+  keyFilename: "google-storage.json",
 });
 
 const bucketName = process.env.GOOGLE_STORAGE_BUCKET_NAME;
